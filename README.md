@@ -1,6 +1,16 @@
 # DHMG
 ### Digitalhigh's Multimedia Gallery
 
+<img src="https://img.phlexchat.com/demo/test1.png">
+
+<img src="https://img.phlexchat.com/demo/test2.png">
+
+<img src="https://img.phlexchat.com/demo/test3.png">
+
+<img src="https://img.phlexchat.com/demo/test4.png">
+
+<img src="https://img.phlexchat.com/demo/test5.png">
+
 #### What is this?
 
 This is a small (156k) PHP application that can turn any directory of media into a full-blown gallery. No work required (almost), just drop it into a folder structure with some media...and go!
