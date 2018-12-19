@@ -11,19 +11,23 @@ by Digitalhigh
 if (file_exists("./_sort/sort.php")) require_once("./_sort/sort.php");
 
 //	----------- CONFIGURATION START ------------
+// Probably don't touch these, haven't tested changing them...
 $ds = DIRECTORY_SEPARATOR;
 $root = "." . $ds;
 define('GALLERY_ROOT', $root);
 define('DATA_ROOT', ".${ds}_dhmg_data${ds}");
 $logPath = DATA_ROOT . "logs${ds}";
 DEFINE('LOG_PATH', $logPath);
+// These are cool to edit
 define('GALLERY_NAME', 'Pocket Gallery');
-define('FFMPEG_PATH', 'D:\xampp\ffmpeg.exe');
+//define('FFMPEG_PATH', 'D:\xampp\ffmpeg.exe');
+define('FFMPEG_PATH', 'ffmpeg');
 
 // Protection schtuff...
-define('SECURITY_PHRASE', 'lcZNUIYTbYe4mHofqjTfdtbfqmxe4w'); // Auto generated
-define('PASSWORD', ''); // Set this for login stuff (WIP)
+define('SECURITY_PHRASE', ''); // Auto generated
+define('PASSWORD', ''); // Not actually implemented (yet)
 
+// Leave these alone
 define('ENCRYPT_LINKS', false); // Encrypt links with the security phrase
 define('PROTECT_LINKS', false); // No direct links to media in gallery (slower)
 
@@ -54,6 +58,8 @@ define('EXCLUDE_ARRAY', [ // Add files here to ignore in listing
 define('SHOW_VIDEOS', true);
 define('SHOW_FILES', true);
 
+// UI maxes out at 350, so there's no reason to make this larger.
+// Decrease to save a little space/speed
 define('THUMB_SIZE', 350);
 
 //	----------- CONFIGURATION END ------------
@@ -93,8 +99,8 @@ function _initialize() {
 	$itemId = $_GET['id'] ?? false;
 
 	if ($itemId) {
-	    write_log("We have an item id: $itemId");
 		$path = stringUrl($itemId);
+		write_log("We have an item id: $itemId, path set to $path");
 		$cmd = $_GET['cmd'] ?? false;
 		if ($cmd) {
 			write_log("Received a $cmd request for: $itemId");
@@ -110,7 +116,8 @@ function _initialize() {
 			$target = $target ? stringUrl($target) : false;
 			if ($cmd === 'addFav' && $target) {
 			    write_log("We should add a favorite here.");
-			    $data = setFavorite($itemId, $target);
+			    $result = setFavorite($itemId, $target);
+			    $data = $result ? ['succss'] : ["error"];
 				header('Content-Type: application/json');
 			    echo json_encode(dirJson($path, false, $data));
 			    xit();
@@ -118,13 +125,15 @@ function _initialize() {
 
             if ($cmd === 'delFav' && $target) {
                 write_log("We should remove a favorite here.");
-                $data = setFavorite($itemId, $target, true);
+                $result = setFavorite($itemId, $target, true);
+				$data = $result ? ['succss'] : ["error"];
                 header('Content-Type: application/json');
                 echo json_encode(dirJson($path, false, $data));
                 xit();
             }
 
 			if ($cmd == 'thumb') {
+			    write_log("Thumb request for $path, id is $itemId");
 				$path = getThumb($path, false);
 				if (file_exists($path)) {
 					$ext = fileId($path, true);
@@ -440,6 +449,7 @@ function getTime($item) {
 
 
 function getThumb($resource, $thumbOnly = true) {
+    $or = $resource;
 	$image_type = fileId($resource);
 	if ($image_type !== 'vid' && $image_type !== 'img') return false;
     $resource = trim($resource);
@@ -471,7 +481,7 @@ function getThumb($resource, $thumbOnly = true) {
 		} else {
 			if ($thumbOnly) return $thumbPath;
 			if (!$image = imagecreatefromstring(file_get_contents($resource))) {
-				write_log("Error creating image thumbnail from $resource.", "ERROR");
+				write_log("Error creating image thumbnail from $resource, original path is $or.", "ERROR");
 				return false;
 			}
 
@@ -745,7 +755,7 @@ function setFavorite($dir, $item, $delete = false) {
         $data['favorites'] = array_unique($favorites);
 		write_log("Real path? " . realpath($dataPath));
 		file_put_contents($dataPath, json_encode($data));
-		return $data;
+		return $result;
 
 	}
 	return $result;
@@ -858,6 +868,7 @@ function xit($msg=false) {
 <!DOCTYPE html>
 	<html>
 		<head>
+            <link rel="shortcut icon" href="./_resources/img/favicon.ico">
 			<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
             <meta name="pageKey" id="pageKey" content="<?php echo DIR_KEY ?>">
             <meta name="protectKey" id="protectKey" content="<?php echo PROTECT_LINKS ?>">
@@ -902,7 +913,7 @@ function xit($msg=false) {
             </div>
         </nav>
         <div id="galleryDiv" class="gridContainer">
-            <div id="galleryContent" class="grid"></div>
+            <div id="galleryContent" class="grid fadeOut"></div>
             <div id='loader' class="lds-ripple"><div></div><div></div></div>
         </div>
         <div id="scrollTip"></div>

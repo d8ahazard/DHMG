@@ -8,7 +8,7 @@ var isScrolling = false;
 var letter = 'nan';
 var letters = [];
 var mediaArray = [];
-var phpSelf = '/index.php';
+var phpSelf = '.';
 var preloadImg = new Image();
 var preloaded = -1;
 var preloadedFull = -1;
@@ -77,8 +77,10 @@ function addElements(elements, isMedia) {
         var favIcon = (obj['favorite']) ? "fa fa-star" : "far fa-star";
         var favClass = (obj['favorite']) ? " favorite" : "";
         var thumbPath = phpSelf + '?cmd=thumb&id=' + obj['thumb'];
+        thumb = obj['thumb'].replace(/%2F/g, '/');
+        thumb = thumb.replace(/\+/g, '%20');
         content += '<div class="cell thumbDiv col-6 col-md-4 col-lg-2 col-xl-1 card bg-dark'+favClass+'" data-name="'+name+'" data-text="' + letter + '" data-index="' + mediaIndex + '" data-src="'+obj['link']+'" data-type="'+type+'">' +
-            '<img data-src="' + thumbPath + '" class="responsive-image lozad">' +
+            '<img class="responsive-image lozad" data-alt="' + thumb + '" data-src="' + thumbPath + '"/>' +
             '<div class="thumbtitle decorator">' + name + '</div>' +
             '<div class="typeIcon decorator"><i class="fa fa-' + typeIcon + '"></i></div>' +
             '<div class="favIcon"><i class="'+ favIcon +'"</div>' +
@@ -93,7 +95,9 @@ function addElements(elements, isMedia) {
 
 
 function buildGallery(reload) {
-    $('#galleryContent').empty();
+    var gc = $("#galleryContent");
+    gc.addClass('fadeOut');
+    gc.empty();
     console.log("Data array: ", dataArray);
     if (dataArray && dataArray.hasOwnProperty('media')) {
         mediaArray = dataArray['media'];
@@ -122,10 +126,14 @@ function buildGallery(reload) {
             if (files.length)addElements(files, true);
         }
     }
-    $('#loader').addClass('fadeOut');
-    if (!reload) setListeners();
-    var observer = lozad();
-    observer.observe();
+    setTimeout(function(){
+        $('#loader').addClass('fadeOut');
+        gc.removeClass('fadeOut');
+        if (!reload) setListeners();
+        var observer = lozad();
+        observer.observe();
+
+    }, 1000);
     filterDivs();
     scaleThumbs();
 }
@@ -481,12 +489,29 @@ function setListeners() {
         toggleHover();
     });
 
+    // $('img:not(".reloaded")').on('error', function() {
+    //     if ($(this).attr('data-alt') !== undefined && !$(this).hasClass('reloaded')) {
+    //         console.log("Building image for ", $(this).data('alt'));
+    //         $(this).attr('src', $(this).attr('data-alt'));
+    //         $(this).addClass('reloaded');
+    //     }
+    // });
+
     $(document).on('click', '#fullToggle', function(){
         toggleFullScreen();
     });
 
     $(document).on('click', '.favIcon', function(e){
-        toggleFavorite($(this));
+        var parent = $(this).closest('.thumbDiv');
+        $('#loader').removeClass('fadeOut');
+        var lastOffset = $('.far').last().offset();
+        var gc = $('#galleryContent');
+        parent.animate({ 'top': lastOffset.top + 'px', 'left': lastOffset.left + 'px'}, 150, function(){
+
+        });
+        gc.addClass('fadeOut');
+        setTimeout(toggleFavorite($(this), 500));
+
         e.stopPropagation();
     });
 
@@ -741,23 +766,43 @@ function thumbDisplayName(name) {
 
 
 function toggleFavorite(el) {
-    $('#loader').removeClass('fadeOut');
     $('#galleryContent').empty();
     var parent = el.closest('.thumbDiv');
     var id = parent.data('src');
     var page = $('#pageKey').attr('content');
+    var dataIndex = false;
+    console.log("Data array: ", dataArray);
+    var media = dataArray['media'];
+    $.each(media, function(key, value){
+        if (value['link'] === id) dataIndex = key;
+    });
+
+    if (dataIndex !== false) {
+        var item = media[dataIndex];
+        item['favorite'] = !item['favorite'];
+        console.log("Setting favorite: ", item);
+        dataArray['media'][dataIndex] = item;
+        buildGallery(true);
+    } else {
+        console.log("Unable to find value in data array!");
+    }
     var action = 'addFav';
     var child = el.find('.fa');
     console.log("Toggling for ", child);
-    if (child.length) {
+    var delFavorite = !!(child.length);
+    if (delFavorite) {
         console.log("This should be an unset");
         action = 'delFav';
     }
     var url = phpSelf + "?cmd=" + action + "&target=" + id + "&id=" + page;
+
     $.getJSON(url, function(data){
-        dataArray = data;
-        console.log("DATA: ", dataArray);
-        buildGallery(true);
+        //dataArray = data;
+        if (data[0] !== "error") {
+            console.log("REBUILDING.");
+        } else {
+            console.error("Something bad happened...");
+        }
     });
     console.log("URL For el: " + url, el);
 }
