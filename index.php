@@ -10,29 +10,14 @@ by Digitalhigh
 
 if (file_exists("./_sort/sort.php")) require_once("./_sort/sort.php");
 
-//	----------- CONFIGURATION START ------------
-// Probably don't touch these, haven't tested changing them...
-$ds = DIRECTORY_SEPARATOR;
-$root = "." . $ds;
-define('GALLERY_ROOT', $root);
-define('DATA_ROOT', ".${ds}_dhmg_data${ds}");
-$logPath = DATA_ROOT . "logs${ds}";
-DEFINE('LOG_PATH', $logPath);
-// These are cool to edit
 define('GALLERY_NAME', 'Pocket Gallery');
 //define('FFMPEG_PATH', 'D:\xampp\ffmpeg.exe');
 define('FFMPEG_PATH', 'ffmpeg');
 
-// Protection schtuff...
-define('SECURITY_PHRASE', ''); // Auto generated
-define('PASSWORD', ''); // Not actually implemented (yet)
 
-// Leave these alone
-define('ENCRYPT_LINKS', false); // Encrypt links with the security phrase
-define('PROTECT_LINKS', false); // No direct links to media in gallery (slower)
 
 define('EXCLUDE_ARRAY', [ // Add files here to ignore in listing
-        "_dhmg_data",
+		"_data",
         "_sort",
         '_dirData',
         "_dirList",
@@ -49,147 +34,126 @@ define('EXCLUDE_ARRAY', [ // Add files here to ignore in listing
         '.js',
         '.css',
         '.html',
-        '.ico',
-        '.bk',
-        '.htaccess'
-    ]
-);
+		'.ico',
+		'.bk',
+		'.htaccess'
+	]);
 
+define('SHOW_IMAAGES', true);
 define('SHOW_VIDEOS', true);
 define('SHOW_FILES', true);
 
-// UI maxes out at 350, so there's no reason to make this larger.
+// UI maxes out at 250, so there's no reason to make this larger.
 // Decrease to save a little space/speed
-define('THUMB_SIZE', 350);
+define('THUMB_SIZE', 250);
 
 //	----------- CONFIGURATION END ------------
+$root = fixPath(dirname(__FILE__));
+define('ROOT', $root);
+define('DATA_DIR', "$root/_data");
+define('THUMB_DIR', "$root/_data/thumb");
+define('INFO_DIR', "$root/_data/info");
+define('LOG_DIR', "$root/_data/logs");
+define('FAV_DIR', "$root/_data/favorite");
+
+foreach([THUMB_DIR, INFO_DIR, LOG_DIR, FAV_DIR] as $dir) mkDirs($dir);
 
 error_reporting(E_ALL);
 ini_set('max_execution_time', 0);
 ini_set('memory_limit', -1);
 set_time_limit(0);
 ini_set("log_errors", 1);
-$ds = DIRECTORY_SEPARATOR;
-ini_set("error_log", LOG_PATH . "Error.log.php");
+ini_set("error_log", LOG_DIR . "/Error.log.php");
 
-mkDirs(DATA_ROOT . 'logs');
-mkDirs(DATA_ROOT . 'thumb');
-mkDirs(DATA_ROOT . 'info');
+
 
 _initialize();
+/**
+ * Reads GET params and returns/sets data accordingly.
+ */
 
 function _initialize() {
-	write_log("----------------- NEW REQUEST -----------------", "INFO");
-	if (SECURITY_PHRASE === '') {
-		if ($sc = @file_get_contents($_SERVER['SCRIPT_FILENAME'])) {
-			$phrase = randomKey(30);
-			$nr_replace = 0;
-			$sc = str_replace("define('SECURITY" . "_PHRASE', '');", "define('SECURITY_PHRASE', '$phrase');", $sc, $nr_replace);
-			if ($nr_replace === 1) {
-				if (file_put_contents($_SERVER['SCRIPT_FILENAME'], $sc)) {
-					header('Location: ' . $_SERVER['PHP_SELF']);
-					xit();
-				}
-			}
-		}
-		xit('You have to set the SECURITY_PHRASE in the top of the script! See readme.txt for description.');
+	$path = localPath(ROOT);
+	$infoPath = INFO_DIR . "/.info";
+	$thumbPath = false;
+	if (isset($_GET['id'])) {
+		write_log("We got an ID: ". $_GET['id']);
+		$path = pathify($_GET['id'], true);
+		$infoPath = INFO_DIR . $path . "/.info";
+		$thumbPath = THUMB_DIR . $path . ".png";
+		//if ($path !== ".") $path = "." . $path;
 	}
 
-	$path = GALLERY_ROOT;
-	$itemId = $_GET['id'] ?? false;
+	define('HOME', $path);
+	define('THUMB', $thumbPath);
+	define('INFO', $infoPath);
+	write_log("HTI: " . HOME . " , " . THUMB . " , " . INFO);
 
-	if ($itemId) {
-		$path = stringUrl($itemId);
-		write_log("We have an item id: $itemId, path set to $path");
-		$cmd = $_GET['cmd'] ?? false;
-		if ($cmd) {
-			write_log("Received a $cmd request for: $itemId");
-			if ($cmd === 'json') {
-			    $background = $_GET['background'] ?? false;
-				header('Content-Type: application/json');
-				$json = dirJson($path, $background);
-				echo json_encode($json);
-				xit();
-			}
+	if (isset($_GET['build'])) {
+	    write_log("BUILDING THUMBS.");
+	    buildThumbs();
+	    xit();
+    }
 
-			$target = $_GET['target'] ?? false;
-			$target = $target ? stringUrl($target) : false;
-			if ($cmd === 'addFav' && $target) {
-			    write_log("We should add a favorite here.");
-			    $result = setFavorite($itemId, $target);
-			    $data = $result ? ['succss'] : ["error"];
-				header('Content-Type: application/json');
-			    echo json_encode(dirJson($path, false, $data));
-			    xit();
-            }
+    if (isset($_GET['favorite'])) {
+        $remove = isset($_GET['delete']);
+		write_log("Setting favorite, remove is $remove");
+		setFavorite($path, $remove);
+        xit();
+    }
 
-            if ($cmd === 'delFav' && $target) {
-                write_log("We should remove a favorite here.");
-                $result = setFavorite($itemId, $target, true);
-				$data = $result ? ['succss'] : ["error"];
-                header('Content-Type: application/json');
-                echo json_encode(dirJson($path, false, $data));
-                xit();
-            }
-
-			if ($cmd == 'thumb') {
-			    write_log("Thumb request for $path, id is $itemId");
-				$path = getThumb($path, false);
-				if (file_exists($path)) {
-					$ext = fileId($path, true);
-					$name = basename($path);
-					header('Content-Type: image/' . $ext);
-					header("Content-Disposition: filename='$name'");
-					readfile($path);
-				}
-				die();
-			}
-
-			if ($cmd === 'image' || $cmd === 'img') {
-				if (file_exists($path)) {
-					$ext = fileId($path, true);
-					$name = basename($path);
-					write_log("File is valid, setting ext to $ext and name to $name. ");
-					header('Content-Type: image/' . $ext);
-					header("Content-Disposition: filename='$name'");
-					readfile($path);
-				}
-				xit();
-			}
-
-			if ($cmd == 'video') {
-			    $id = fileId($path, true);
-                header('Content-Type: text/plain');
-                echo $path;
-
-				xit("file ID: $id");
-			}
-
-			if ($cmd == 'file') {
-				header('Location: ' . $path);
-				xit();
-			}
-			xit();
-		} else {
-			write_log("No command, echoing body...");
-		}
-	} else {
-	    $itemId = "." . DIRECTORY_SEPARATOR;
+	if (isset($_GET['time'])) {
+		header('Content-Type: text/plain');
+		echo getTime($path);
+		xit();
 	}
-	define("DIR_KEY", $itemId);
-	$paths = makeLinks($path);
+
+	if (isset($_GET['json'])) {
+	    write_log("JSON REQUEST...");
+		header("Content-Type: application/json");
+		echo dirJson($path);
+		xit();
+	}
+
+	if (isset($_GET['thumb'])) {
+	    write_log("BUILD A DAMNED THUMB");
+	    //echo "$path";
+		$queuePath = THUMB_DIR . "/queue";
+		if (is_dir($path)) $path = listDir($path, true);
+		$thumb = getThumb($path);
+		write_log("Returning thumb from $thumb");
+	    if (file_exists($thumb)) {
+			$queueId = pathify($thumb);
+			$queueFile = $queuePath . "/$queueId.q";
+            if (file_exists($queueFile)) unlink($queueFile);
+			$name = basename($thumb);
+			header('Content-Type: image/png');
+			header("Content-Disposition: filename='$name'");
+			readfile($thumb);
+		}
+	    xit();
+    }
+
+	if (isset($_GET['file'])) {
+		header('Location: ' . $path);
+		xit();
+	}
+
+	define("DIR_KEY", pathify(localPath($path)));
+	define("DIR_PATH", localPath($path));
+	$paths = makeLinks(localPath($path));
 	$lines = [];
 	$i = 0;
 	foreach($paths as $path) {
-	    $link = $i ? (".?id=" . $path['link']) : ".";
+		$link = $i ? (".?id=" . $path['link']) : ".";
 		$name = $i ? ucwords($path['name']) : "Home";
 		if ($i === (count($paths) - 1)) {
-		    $active = " active";
-		    $inner = $name;
-        } else {
-		    $active = "";
-		    $inner = "<a href='$link'>$name</a>";
-        };
+			$active = " active";
+			$inner = $name;
+		} else {
+			$active = "";
+			$inner = "<a href='$link'>$name</a>";
+		};
 		$lines[] = "<li class='breadcrumb-item${active}' aria-current='page'>$inner</li>";
 		$i++;
 	}
@@ -203,40 +167,40 @@ function _initialize() {
 }
 
 
-function cleanFolders($dir) {
-    $ds = DIRECTORY_SEPARATOR;
-    $infoRoot = DATA_ROOT . 'info' . $ds;
-	$thumbRoot = DATA_ROOT . 'thumb' . $ds;
-    $infoPath = str_replace(GALLERY_ROOT, $infoRoot, $dir);
-	$existing = glob($infoPath . $ds . '*', GLOB_ONLYDIR);
-	$current = glob($dir . $ds . "*", GLOB_ONLYDIR);
-	foreach($existing as &$local) {
-		$local = str_replace($infoPath, GALLERY_ROOT, localPath($local));
-	}
-	foreach($current as &$curr) $curr = localPath($curr);
-	$diff = array_diff($existing, $current);
-	write_log("Diff: ".json_encode($diff));
-	if (empty($diff)) write_log("No files to clean!");
-	$unlink = [];
-    foreach($diff as $clean) {
-	    $infoPath = str_replace(GALLERY_ROOT, $infoRoot, $clean);
-	    $thumbPath = str_replace(GALLERY_ROOT, $thumbRoot, $clean);
-	    $unlink[] = $infoPath;
-	    $unlink[] = $thumbPath;
-    }
-    foreach($unlink as $un) {
-        if ($un !== $dir && (preg_match("#info#", $un) || preg_match("#thumb#", $un))) {
-	        //write_log("About to unlink $un");
-	        //rmdirs($un);
+function buildThumbs() {
+    $queuePath = THUMB_DIR . "/queue";
+	$files = glob($queuePath . "/*.q");
+	foreach($files as $thumb) {
+	    $og = $thumb;
+	    $thumb = str_replace(".q", "", $thumb);
+	    $thumb = str_replace($queuePath . "/", "", $thumb);
+	    $thumb = str_replace("//", "", $thumb);
+	    $thumbSrc = pathify($thumb, true);
+	    if (trim($thumbSrc)) {
+			write_log("I should build a thumb for $thumbSrc now.");
+			getThumb($thumbSrc);
         }
-    }
+        unlink($og);
+	}
 }
 
 
+/**
+ *
+ * Sends a CURL command without waiting for a reply
+ *
+ * @param $url
+ */
 function curlQuick($url) {
-    write_log("Quick curl fired for $url");
+	write_log("Quick curl fired for $url");
 	$ch = curl_init($url);
-	//curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	if (function_exists('auth_headers')) {
+	    $hs = auth_headers();
+	    write_log("Setting auth headers: to $hs");
+		curl_setopt($ch, CURLOPT_USERPWD, $hs);
+		curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+	}
+
 	curl_setopt($ch, CURLOPT_USERAGENT, 'api');
 	curl_setopt($ch, CURLOPT_TIMEOUT, 1);
 	curl_setopt($ch, CURLOPT_HEADER, 0);
@@ -245,95 +209,57 @@ function curlQuick($url) {
 	curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
 	curl_setopt($ch, CURLOPT_DNS_CACHE_TIMEOUT, 10);
 	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-
 	curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-
 	curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
 	$res = curl_exec($ch);
 	curl_close($ch);
 	write_log("Curl result: ".$res);
-//	curl_setopt($ch, CURLOPT_URL, $url);
-//	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 0);
-//	curl_setopt($ch, CURLOPT_TIMEOUT_MS, 1);
-//	curl_exec($ch);
-//	curl_close($ch);
 	write_log("Curlquick done...");
 }
 
 
-function displayName($name) {
-	$name = pathinfo($name, PATHINFO_FILENAME);
-	$name = str_replace('_', ' ', $name);
-	return ucwords(explode(".", $name)[0]);
-}
+function dirJson($path) {
+    write_log("Local path is $path");
+	$fav = listFav($path);
+	$data = [];
+	$data['favorites'] = $fav;
 
-
-function dirInfo($dir) {
-	$galPath = GALLERY_ROOT;
-	$dataPath = DATA_ROOT . "info" . DIRECTORY_SEPARATOR;
-	$targetPath = str_replace($galPath, $dataPath, $dir);
-	$dataFile = $targetPath . DIRECTORY_SEPARATOR . '_dirData';
-	$existing = json_decode(file_get_contents($dataFile), true);
-	$curTime = getTime($dir);
-	$lastTime = $existing['time'] ?? false;
-	$newTime = ($curTime !== ($existing['time'] ?? 'foo'));
-	if ($newTime) {
-		write_log("Difference caused update: $curTime, $lastTime, writing to $dataFile", "ALERT");
-		$newInfo = getDirInfo($dir);
-		if ($dir !== $dataFile) putFile($dataFile, $newInfo);
-	} else {
-		$newInfo = $existing;
-	}
-	return $newInfo;
-}
-
-
-function dirJson($dir, $background = false, $json = false) {
-	write_log("Fetching json for $dir, background is $background", "ALERT");
-	$data = $json ? $json : listDirectory($dir, false, $background);
-	if (($data[0] ?? 'foo') === 'building') {
-	    return $data;
+	if (file_exists(INFO)) {
+	    write_log("Info exists.");
+	    if (getTime($path) === getTime(INFO)) {
+            write_log("File times match!.");
+            $data['items'] = json_decode(file_get_contents(INFO), true);
+            return json_encode($data);
+        } else {
+	        write_log("File times don't match: ". getTime($path) . ' and ' . getTime(INFO));
+	        $data['items'] = updateDir($path);
+	        putInfo($path, $data['items']);
+	        return json_encode($data);
+        }
     }
-    $favorites = $data['favorites'] ?? [];
-	write_log("Favorite array for file: ".json_encode($favorites));
-	$results = [];
-	$results['media'] = [];
-	unset($data['path']);
-	unset($data['favorites']);
-	foreach($data as $type => $items) {
-		if (!is_array($items)) continue;
-		foreach ($items as $item) {
-			$path = $item['path'];
-			$name = displayName($item['name']);
-			$link = urlString($path);
-			if ($type === 'dir') {
-				$info = dirInfo($path);
-				$thumb = $info['thumb'] ?? false;
-			} else {
-				$info = fileInfo($path);
-				$thumb = getThumb($path);
-			}
 
-			$results['media'][] = [
-				'name' => $name,
-				'type' => $type,
-				'info' => $info,
-				'thumb' => urlString($thumb),
-				'link' => $link,
-                'favorite' => (in_array($path, $favorites))
-			];
-		}
-	}
-	return $results;
+    $data['items'] = listDir($path);
+	putInfo($path, $data['items']);
+	return json_encode($data);
 }
 
 
+/**
+ *
+ * Reads and returns a type for a path.
+ * If returnType is set, it returns the filetype, otherwise, a classifaction.
+ *
+ * @param $file
+ * @param bool $returnType
+ * @return string
+ */
 function fileId($file, $returnType = false) {
-    $parts = explode(".", $file);
+	$parts = explode(".", $file);
 	$type = strtolower(array_pop($parts));
 	$image_types = ['jpg', 'jpeg', 'png', 'gif'];
 	$video_types = ['mp4', 'mov', 'mkv', 'm4v', 'webm'];
 	$audio_types = ['mp3', 'wav', 'ogg'];
+	if (is_dir($file)) return 'dir';
 	if (in_array($type, $image_types)) {
 		if ($type === 'jpg') $type = 'jpeg';
 		return $returnType ? $type : 'img';
@@ -347,26 +273,13 @@ function fileId($file, $returnType = false) {
 }
 
 
-function fileInfo($file) {
-    $galPath = GALLERY_ROOT;
-	$dataPath = DATA_ROOT . "info" . DIRECTORY_SEPARATOR;
-	$dataFile = str_replace($galPath, $dataPath, $file) . '.info';
-	$existing = json_decode(file_get_contents($dataFile), true);
-	$curTime = getTime($file);
-	$curSize = filesize($file);
-	$newSize = ($curTime !== ($existing['time'] ?? 'foo'));
-	$newTime = ($curSize !== ($existing['size'] ?? 'foo'));
-	if ($newSize || $newTime) {
-		write_log("Setting file info for $file, targeting $dataFile");
-		$data = ['time' => $curTime, 'size' => $curSize];
-		if ($file !== $dataFile) putFile($dataFile, $data);
-	} else {
-		$data = $existing;
-	}
-	return $data;
-}
-
-
+/**
+ *
+ * Determine if a file should be displayed in the gallery
+ *
+ * @param $file
+ * @return bool
+ */
 function filterFile($file) {
 	foreach(EXCLUDE_ARRAY as $exclude) {
 		if (preg_match("#$exclude#", $file['name'])) return false;
@@ -377,55 +290,32 @@ function filterFile($file) {
 			return SHOW_VIDEOS;
 		case 'file':
 			return SHOW_FILES;
+		case 'img':
+			return SHOW_IMAAGES;
 		default:
 			return true;
 	}
 }
 
 
-function getDirInfo($dir, $thumbOnly = false) {
-	write_log("Function fired for $dir");
-	$dirData = listDirectory($dir, $thumbOnly);
-	$thumb = false;
-	$dir = $dirData['path'];
-	$images = $dirData['img'] ?? [];
-	$videos = $dirData['vid'] ?? [];
-	$dirs = $dirData['dir'] ?? [];
-	$tracks = $dirData['aud'] ?? [];
-	$files = $dirData['file'] ?? [];
-	if (isset($images[0])) {
-		$thumb = getThumb($images[0]['path']);
-	} elseif (isset($videos[0]) && !$thumb) {
-		$thumb = getThumb($videos[0]['path']);
-	} elseif (!$thumb) {
-		$thumb = false;
-		$i = 0;
-		foreach ($dirs as $subdir) {
-			$subPath = $subdir['path'];
-			write_log("Looping subdir for a thumb from $subPath.");
-			$thumb = getDirInfo($subPath, true);
-			if ($thumb) break;
-			$i++;
-		}
-	}
-
-	if ($thumbOnly) {
-		return $thumb;
-	} else {
-		$dirTime = getTime($dir);
-		return [
-			'time' => $dirTime,
-			'dirs' => count($dirs),
-			'images' => count($images),
-			'videos' => count($videos),
-			'files' => count($files),
-			'tracks' => count($tracks),
-			'thumb' => $thumb
-		];
-	}
+/**
+ *
+ * Makes a windows path normal
+ *
+ * @param $path
+ * @return mixed
+ */
+function fixPath($path) {
+	return str_replace("\\", "/", $path);
 }
 
 
+/**
+ *
+ * Returns the class calling "write_log";
+ *
+ * @return string
+ */
 function getCaller() {
 	$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
 	$callers = [];
@@ -440,30 +330,18 @@ function getCaller() {
 }
 
 
-function getTime($item) {
-	$item = realpath($item);
-	if (is_file($item)) return filemtime($item);
-	if (is_dir($item)) return filemtime($item . DIRECTORY_SEPARATOR . ".");
-	return false;
-}
-
-
-function getThumb($resource, $thumbOnly = true) {
-    $or = $resource;
+function getThumb($resource) {
+	$or = $resource;
 	$image_type = fileId($resource);
 	if ($image_type !== 'vid' && $image_type !== 'img') return false;
-    $resource = trim($resource);
-	$dataPath = trim(DATA_ROOT . 'thumb' . DIRECTORY_SEPARATOR);
-	$foo = str_replace($dataPath, GALLERY_ROOT, $resource);
-	if ($foo !== $resource) {
-	    $resource = $foo;
-		$resource = substr($resource, 0, -4);
-		$image_type = fileId($resource);
-	}
-	$thumbPath = str_replace(GALLERY_ROOT, $dataPath, $resource) . ".png";
-	$thumbPath = str_replace("//", DIRECTORY_SEPARATOR, $thumbPath);
-    if (file_exists($thumbPath)) {
-        return $thumbPath;
+	$resource = trim($resource);
+	$resource = str_replace("./", "", $resource);
+
+	$thumbPath = THUMB_DIR . "/$resource.png";
+	$thumbPath = str_replace("//", "/", $thumbPath);
+	$resource = str_replace("//", "/", $resource);
+	if (file_exists($thumbPath)) {
+		return $thumbPath;
 	} else {
 		write_log("Constructing thumb for '$resource', couldn't find it at '$thumbPath'");
 		$newWidth = THUMB_SIZE;
@@ -472,14 +350,14 @@ function getThumb($resource, $thumbOnly = true) {
 
 		if ($image_type === 'vid') {
 			write_log("Got us a thumb request for a video!", "ALERT");
-			if ($thumbOnly) return $thumbPath;
-			$fullPath = str_replace(GALLERY_ROOT, realpath(GALLERY_ROOT) . DIRECTORY_SEPARATOR, $thumbPath);
+			$fullPath = str_replace(realpath(ROOT), realpath(THUMB_DIR), $thumbPath);
+			if ($fullPath === $resource) return false;
 			if (!imageVid($resource, $fullPath, $newWidth, $newHeight)) {
 				write_log("Error creating video thumbnail from $resource to $fullPath.");
 				return false;
 			}
+			return $fullPath;
 		} else {
-			if ($thumbOnly) return $thumbPath;
 			if (!$image = imagecreatefromstring(file_get_contents($resource))) {
 				write_log("Error creating image thumbnail from $resource, original path is $or.", "ERROR");
 				return false;
@@ -509,6 +387,32 @@ function getThumb($resource, $thumbOnly = true) {
 }
 
 
+/**
+ *
+ * Returns the current time for a file/directory
+ *
+ * @param $item
+ * @return bool|int
+ */
+function getTime($item) {
+    $item = fixPath(realpath($item));
+	if (is_dir($item)) $item .= "/.";
+	$time = filemtime($item);
+	write_log("Time for $item is $time");
+    return $time;
+}
+
+
+/**
+ *
+ * Save a thumbnail from a video
+ *
+ * @param string $movie
+ * @param string $out
+ * @param int $w
+ * @param int $h
+ * @return bool
+ */
 function imageVid($movie, $out, $w, $h) {
 	$movie = realpath($movie);
 	write_log("Trying to convert $movie to $out.");
@@ -516,111 +420,116 @@ function imageVid($movie, $out, $w, $h) {
 	$cmd = FFMPEG_PATH . " -i '$movie' 2>&1";
 	exec($cmd, $results);
 	foreach($results as $line) {
-	    if (preg_match("/Duration:/", $line)) {
-	        $len = explode(",", str_replace("Duration: ", "", $line))[0];
-		    $seconds = strtotime($len) - strtotime('00:00:00');
-		    $int = $seconds / 2;
-		    $t = round($int);
-		    $time = sprintf('%02d:%02d:%02d', ($t/3600),($t/60%60), $t%60);
-		    write_log("Clip is $seconds long, half is $int, time should be $time");
-        }
-    }
+		if (preg_match("/Duration:/", $line)) {
+			$len = explode(",", str_replace("Duration: ", "", $line))[0];
+			$seconds = strtotime($len) - strtotime('00:00:00');
+			$int = $seconds / 2;
+			$t = round($int);
+			$time = sprintf('%02d:%02d:%02d', ($t/3600),($t/60%60), $t%60);
+			write_log("Clip is $seconds long, half is $int, time should be $time");
+		}
+	}
 	$cmd2 = FFMPEG_PATH . " -ss $time -i \"$movie\" -frames:v 1 -q:v 2 -vf \"scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}\" \"$out\" 2>&1";
 	write_log("Command is $cmd2");
 	exec($cmd2, $results);
 	foreach($results as $line) {
-	    if (preg_match("/Output #/", $line)) {
-	            write_log("looks like we were successful...");
-	            return true;
+		if (preg_match("/Output #/", $line)) {
+			write_log("looks like we were successful...");
+			return true;
 
-        }
-    }
+		}
+	}
 	return true;
 }
 
 
-function listDirectory($dir, $thumbOnly = false, $background = false) {
-	write_log("Incoming path is " . $dir, "INFO");
-	$path = $dir;
-	$rootPath = GALLERY_ROOT;
-	$infoPath = DATA_ROOT . 'info' . DIRECTORY_SEPARATOR;
-	$dataPath = str_replace($rootPath, $infoPath, $dir) . "_dirList";
-	write_log("Trying to replace $rootPath with $infoPath in $dir for $dataPath", "INFO");
-	$time = getTime($dir);
-	write_log("Listing dir from $dataPath");
-	$dirJson = (file_exists($dataPath)) ? json_decode(file_get_contents($dataPath), true) : false;
-	$lastTime = $dirJson['time'] ?? false;
-	if (!file_exists($dataPath)) write_log("NO FILE FOR DIR at '$dataPath' !!");
-	write_log("LastTime: $lastTime");
-	cleanFolders($dir);
-	if ($time !== $lastTime) {
-	    if ($background && !$thumbOnly) {
-			file_put_contents("$dir/_building", "1");
-			$result = ['building'];
-			write_log("Returning: ".json_encode($result));
-			curlQuick($_SERVER['PHP_SELF'] . "./index.php?cmd=json&id=$dir&background=false");
-		    return $result;
-	    }
-	    $results = ['path' => $path, 'time' => $time, 'favorites' => []];
-		write_log("Function fired for $path");
-		if (!is_readable($path)) write_log("PATH IS NOT READABLE.", "ERROR");
-		$paths = [];
-		foreach (new DirectoryIterator($path) as $file) {
-			if ($file->isDot()) continue;
-			$name = $file->getFilename();
-			$type = $file->isDir() ? 'dir' : fileId($name);
-			if (!isset($results[$type])) $results[$type] = [];
-			$path = localPath($file->getPathname());
-			$paths[] = $path;
-			$item = [
-				'name' => $name,
-				'path' => $path,
-				'time' => $file->getMTime(),
-				'size' => $file->getSize(),
-				'type' => $type
-			];
-			if (filterFile($item)) $results[$type][] = $item;
-			if ($thumbOnly) write_log("Returning for thumb: " . json_encode($results), "ALERT");
-			if ($type !== 'file' && count($results[$type]) && $thumbOnly) {
-				return $results;
-			} else {
-				if ($thumbOnly) write_log("Still searching for a thumb.");
-			}
+/**
+ *
+ * List the contents of a directory.
+ * If "thumbOnly" is specified, it should try to find, in order, the first image, then video, then directory
+ * and return ONLY that item
+ *
+ * @param $path
+ * @param $thumbOnly
+ * @return array|bool|mixed
+ */
+function listDir($path, $thumbOnly = false) {
+    if (!$thumbOnly) write_log("Trying to list $path");
+	$results = [];
+	$thumbs = [];
+	foreach (new DirectoryIterator($path) as $file) {
+		if ($file->isDot()) continue;
+		$name = $file->getFilename();
+		$type = $file->isDir() ? 'dir' : fileId($name);
+		$item = [
+			'name' => $name,
+			'time' => $file->getMTime(),
+			'size' => $file->getSize(),
+			'type' => $type,
+            'link' => pathify($path . "/" . $name)
+		];
+		$thumb = $thumbPath = false;
+		if (filterFile($item)) {
+			if ($type === 'img' || $type === 'vid') $thumb = $path . "/" . $name;
+			if ($item['type'] === 'dir') $thumb = listDir($path . "/" . $name, true);
+			if ($thumb) {
+			    $fixed = str_replace("./", "/", $thumb);
+			    $thumbPath = THUMB_DIR . "/$fixed.png";
+			    $thumbPath = str_replace("//", "/", $thumbPath);
+				if (!file_exists($thumbPath)) $thumbs[] = $thumb;
+				$item['thumb'] = localPath($thumbPath);
+				if ($thumbOnly) return $thumb;
+            }
+			$results[] = $item;
 		}
-
-		$write = file_put_contents($dataPath, json_encode($results)) ? "Success" : "write failed";
-		write_log("Result of save: ". $write);
-	} else {
-		if (file_exists("$dir/_building")) {
-            unlink("$dir/_building");
-		}
-		$results = $dirJson;
 	}
-	return $results;
+    if ($thumbOnly) return false;
+    if (count($thumbs)) queueThumbs($thumbs);
+    return $results;
 }
 
 
-function localPath($dir) {
-	$real = realpath($dir);
-	$str = str_replace(realpath(GALLERY_ROOT) . DIRECTORY_SEPARATOR, GALLERY_ROOT, $real);
-	if (is_dir($dir)) $str .= DIRECTORY_SEPARATOR;
-	return $str;
+function listFav($path) {
+    if ($path === ".") $path = "";
+    $favPath = FAV_DIR . str_replace("./", "/", $path);
+	write_log("Path is $path, favPath is $favPath");
+	$favorites = glob($favPath . "/*.fav");
+	foreach($favorites as &$favorite) {
+	    write_log("Replacing '". FAV_DIR . "/" . "' with './' in $favorite");
+		$favorite = str_replace(FAV_DIR . "/", "./", $favorite);
+		write_log("Fav item: $favorite");
+		$favorite = pathify(str_replace(".fav", "", $favorite));
+	}
+	write_log("FAVORITES: ".json_encode($favorites));
+	return $favorites;
 }
 
 
+function localPath($path) {
+    $out = str_replace(ROOT, ".", $path);
+    if ($out === "") $out = ".";
+    return $out;
+}
+
+
+/**
+ * @param $path
+ * @return array
+ */
 function makeLinks($path) {
 	write_log("Making links for path: $path");
 	$paths = [];
-	$homePath = ['name' => 'Home', 'link' => urlString(GALLERY_ROOT)];
-	$links = explode(DIRECTORY_SEPARATOR, $path);
-	$current = "";
+	$homePath = ['name' => 'Home', 'link' => pathify("./")];
+	$links = explode("/", $path);
+	$added = [];
 	if (is_array($links)) {
-	    $i = 0;
-	    foreach($links as $link) {
-		    if (!$link || ($link == "." && $i)) continue;
-		    $current .= $link . DIRECTORY_SEPARATOR;
-		    $paths[] = ['name' => $link, 'link' => urlString($current)];
-			$i ++;
+		$i = 0;
+		foreach($links as $link) {
+			if (!$link || ($link == "." && $i)) continue;
+			$added[] = $link;
+			//$current .= $link . "/";
+			$paths[] = ['name' => $link, 'link' => pathify(implode("/", $added))];
+			$i++;
 		}
 	}
 	$paths[0] = $homePath;
@@ -628,22 +537,67 @@ function makeLinks($path) {
 }
 
 
+/**
+ *
+ * Recursively create a directory if it doesn't exist
+ *
+ * @param $dir
+ * @return bool
+ */
 function mkDirs($dir) {
 	return (is_dir($dir)) ? is_readable($dir) : mkdir($dir, 0777, true);
 }
 
 
-function putFile($path, $data) {
-	if (is_array($data)) $data = json_encode($data);
-	mkDirs(dirname($path));
-	file_put_contents($path, $data);
+/**
+ *
+ * Convert a path to a base64-encoded value, or decode if $decode is true
+ *
+ * @param $path
+ * @param bool $decode
+ * @return string
+ */
+function pathify($path, $decode=false) {
+	if ($decode) {
+	    $padded = str_pad(strtr($path, '-_', '+/'), strlen($path) % 4, '=', STR_PAD_RIGHT);
+	    $out = base64_decode($padded);
+		write_log("padded to $padded, returning $out");
+        return $out;
+	} else {
+		$path = str_replace(ROOT, "", fixPath($path));
+		return rtrim(strtr(base64_encode($path), '+/', '-_'), '=');
+	}
 }
 
 
+/**
+ *
+ * Write data to a specified path. Creates directories as needed, encodes arrays to JSON automagically.
+ *
+ * @param $path
+ * @param $data
+ */
+function putInfo($path, $data) {
+    if (is_array($data)) $data = json_encode($data);
+	mkDirs(dirname(INFO));
+	$time = getTime($path);
+	write_log("Trying to put info to " . INFO);
+	file_put_contents(INFO, $data);
+	touch(INFO, $time);
+}
+
+
+/**
+ *
+ * Recursively remove directories
+ *
+ * @param $dir
+ * @return bool
+ */
 function rmDirs($dir) {
 	if (!file_exists($dir)) return true;
 	if (str_replace(DATA_ROOT, GALLERY_ROOT, $dir) === $dir) {
-	    write_log("Looking for ". DATA_ROOT . " in $dir");
+		write_log("Looking for ". DATA_ROOT . " in $dir");
 		write_log("NO.");
 		return false;
 	}
@@ -651,7 +605,7 @@ function rmDirs($dir) {
 
 	foreach (scandir($dir) as $item) {
 		if ($item == '.' || $item == '..' || $item == "/") {
-		    write_log("'$item' is either the current/parent directory, root folder, or not data root. Not doing it.", "ERROR");
+			write_log("'$item' is either the current/parent directory, root folder, or not data root. Not doing it.", "ERROR");
 			continue;
 		}
 		if (!rmDirs($dir.DIRECTORY_SEPARATOR.$item)) return false;
@@ -660,15 +614,13 @@ function rmDirs($dir) {
 }
 
 
-function randomKey($nr) {
-	$a = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-	$res = '';
-	for ($i = 0; $i < $nr; $i++) {
-		$res .= $a[mt_rand(0, strlen($a) - 1)];
-	}
-	return $res;
-}
-
+/**
+ *
+ * Generate a random token
+ *
+ * @param int $length
+ * @return bool|string
+ */
 function randomToken($length = 32) {
 	if (!isset($length) || intval($length) <= 8) {
 		$length = 32;
@@ -697,130 +649,66 @@ function randomToken($length = 32) {
 			} catch (Exception $e) {
 			}
 			$i++;
-        }
-        $val = ($randomStr) ? $randomStr : false;
-    }
+		}
+		$val = ($randomStr) ? $randomStr : false;
+	}
 	return $val;
 }
 
 
-function removeFromData($name) {
-	$items = ['info', 'thumb'];
-	foreach($items as $path) rmDirs(DATA_ROOT . $path . DIRECTORY_SEPARATOR . $name);
+function queueThumbs($thumbs) {
+    $queuePath = THUMB_DIR . "/queue";
+    mkDirs($queuePath);
+    foreach($thumbs as $thumb) {
+        $queueId = pathify($thumb);
+        $queueFile = $queuePath . "/$queueId.q";
+        write_log("Queueing File: $queueFile");
+        if (!file_exists($queueFile)) {
+            touch($queueFile);
+        } else {
+            write_log("File $thumb is already queued for creation.");
+        }
+    }
+	$url = "http://gandalf/index.php?build";
+	curlQuick($url);
 }
 
 
-function setFavorite($dir, $item, $delete = false) {
-    $result = false;
-	$rootPath = GALLERY_ROOT;
-	$infoPath = DATA_ROOT . 'info' . DIRECTORY_SEPARATOR;
+function setFavorite($item, $delete = false) {
+	$result = false;
 	$fetch = false;
 	if (function_exists('filterDir') && !$delete) $fetch = filterDir($item);
 	if ($fetch) write_log("Fetching for $fetch");
-	$dir = localPath($dir);
-	$dataPath = str_replace($rootPath, $infoPath, $dir) . "_dirList";
-	$data = json_decode(file_get_contents($dataPath), true);
+	$favPath = FAV_DIR . str_replace("./", "/", $item) . ".fav";
+	write_log("Setting favorite for '$item', checking in $favPath");
+	if ($delete) {
+	    if (file_exists($favPath)) {
+			write_log("Deleting...");
+			unlink($favPath);
+        }
 
-	write_log("Need to replace $rootPath with $infoPath in $dir");
-    write_log("We have the meats: ".json_encode($data));
-	$favorites = $data['favorites'] ?? [];
-    write_log("Current favorite list: ".json_encode($favorites));
-    $i = 0;
-    $key = false;
-    foreach($favorites as $check => $favorite) {
-        if ($favorite === $item) {
-			$key = $check;
-			write_log("WE HAVE A MATCH, setting key to $key", "INFO");
-			break;
-		}
-        $i++;
-    }
-    if (!$key) {
-        if (!$delete) {
-			write_log("Setting favorite $item");
-			array_push($favorites, $item);
-			$result = true;
-		}
     } else {
-        if ($delete) {
-			write_log("Removing favorite $item - $key");
-			unset($favorites[$key]);
-			write_log("New favorites array: " . json_encode($favorites));
-			$result = true;
-		}
-
-
+	    write_log("Adding");
+	    mkdirs(dirname($favPath));
+	    touch($favPath);
     }
-    if ($result) {
-        $data['favorites'] = array_unique($favorites);
-		write_log("Real path? " . realpath($dataPath));
-		file_put_contents($dataPath, json_encode($data));
-		return $result;
-
-	}
 	return $result;
 }
 
 
-function stringCrypto($string, $action = 'e') {
-	$secret_key = SECURITY_PHRASE;
-	$secret_iv = 'my_simple_secret_iv';
-	$output = $string;
-	$encrypt_method = "AES-256-CBC";
-	$key = hash('sha256', $secret_key);
-	$iv = substr(hash('sha256', $secret_iv), 0, 16);
-
-	if ($action == 'e') {
-		if (function_exists('openssl_encrypt') && ENCRYPT_LINKS) {
-			$output = openssl_encrypt($output, $encrypt_method, $key, 0, $iv);
-			$output = base64_encode($output);
-		} else {
-			$output = base64_encode($output);
-		}
-	} else if ($action == 'd') {
-		if (function_exists('openssl_encrypt') && ENCRYPT_LINKS) {
-			$output = base64_decode($output);
-			$output = openssl_decrypt($output, $encrypt_method, $key, 0, $iv);
-		} else {
-			$output = base64_decode($output);
-		}
-	}
-
-	return $output;
-}
-
-
-function stringUrl($string, $force=false) {
-	$string = str_replace("/", DIRECTORY_SEPARATOR, $string);
-
-	if (PROTECT_LINKS || $force) {
-	    $string = stringCrypto($string, "d");
-	    if ($string) {
-		    write_log("Decrypted: $string");
-		    $parts = explode("*", $string);
-	    }
-	    $string = $parts[0] ?? $string;
-    }
-    write_log("Result: " . $string);
-    return $string;
-}
-
-
-function urlString($path, $force=false) {
-	if (PROTECT_LINKS || $force) {
-		$time = getTime($path);
-		$path = stringCrypto("$path*$time");;
-	}
-	$path = str_replace(DIRECTORY_SEPARATOR, "/", $path);
-	$path = str_replace("\\", "/", $path);
-	return $path;
+function updateDir($path) {
+    $existing = json_decode(file_get_contents(INFO), true);
+    $current = listDir($path);
+    $del = array_diff_assoc($existing, $current);
+	$add = array_diff_assoc($current, $existing);
+	write_log("Files to delete: " . json_encode($del));
+	write_log("Files to add: " . json_encode($add));
+	return $current;
 }
 
 
 function write_log($text, $level = false) {
-    $ds = DIRECTORY_SEPARATOR;
-	mkDirs(LOG_PATH);
-	$log = LOG_PATH . "${ds}img.log.php";
+	$log = LOG_DIR . "/img.log.php";
 	if (!file_exists($log)) {
 		touch($log);
 		chmod($log, 0666);
@@ -828,7 +716,7 @@ function write_log($text, $level = false) {
 		file_put_contents($log, $authString);
 	}
 	if (filesize($log) > 4194304) {
-		$oldLog = LOG_PATH . "${ds}img.log.old.php";
+		$oldLog = LOG_DIR . "/img.log.old.php";
 		if (file_exists($oldLog)) unlink($oldLog);
 		rename($log, $oldLog);
 		touch($log);
@@ -857,6 +745,12 @@ function write_log($text, $level = false) {
 }
 
 
+/**
+ *
+ * End script execution with a log message. Add an optional ending message...
+ *
+ * @param string | bool $msg
+ */
 function xit($msg=false) {
 	if ($msg) write_log($msg);
 	write_log("----------------- END REQUEST -----------------");
@@ -866,115 +760,82 @@ function xit($msg=false) {
 
 ?>
 <!DOCTYPE html>
-	<html>
-		<head>
-            <link rel="shortcut icon" href="./_resources/img/favicon.ico">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-            <meta name="pageKey" id="pageKey" content="<?php echo DIR_KEY ?>">
-            <meta name="protectKey" id="protectKey" content="<?php echo PROTECT_LINKS ?>">
-			<title><?php echo GALLERY_NAME ?></title>
-			<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
-			<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity=\"sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.0/animate.min.css">
-			<link rel='stylesheet' href='./_resources/css/main.css'>
-        </head>
-        <body>
-        <nav class="navbar fixed-top navbar-dark navbar-expand-md bg-dark row justify-content-between">
-            <div id="navi" class="col-10 col-md-7 col-lg-11 mr-auto">
-                <ol class="breadcrumb">
-					<?php echo DIR_HEADER ?>
-                </ol>
-            </div>
-            <button class="navbar-toggler mr-4" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+<html>
+<head>
+	<link rel="shortcut icon" href="./_resources/img/favicon.ico">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+	<meta name="pageKey" id="pageKey" content="<?php echo DIR_KEY ?>">
+    <meta name="pagePath" id="pagePath" content="<?php echo DIR_PATH ?>">
+	<title><?php echo GALLERY_NAME ?></title>
+	<link rel="stylesheet" href="./_resources/css/lib/all.min.css">
+	<link rel="stylesheet" href="./_resources/css/lib/bootstrap.min.css">
+	<link rel="stylesheet" href="./_resources/css/lightgallery.min.css">
+	<link rel='stylesheet' href='./_resources/css/main.css'>
+</head>
+<body>
+<nav class="navbar fixed-top navbar-dark navbar-expand-md bg-dark row justify-content-between">
+	<div id="navi" class="col-10 col-md-7 col-lg-11 mr-auto">
+		<ol class="breadcrumb">
+			<?php echo DIR_HEADER ?>
+		</ol>
+	</div>
+	<button class="navbar-toggler mr-4" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+		<span class="navbar-toggler-icon"></span>
+	</button>
 
-            <div class="collapse navbar-collapse navInputs navShow row justify-content-center" id="navbarSupportedContent">
+	<div class="collapse navbar-collapse navInputs navShow row justify-content-center" id="navbarSupportedContent">
 
-                <div class="form-inline my-2 my-lg-0">
-                    <div class="inputWrap row justify-content-center">
-                        <input type="text" id="divFilter" class="form-control" placeholder="Filter" aria-label="Filter" aria-describedby="btnGroupAddon">
-                        <div class="btn-group" role="group" aria-label="">
-                            <div class="btn btn-secondary iconBtn" id="sortType" onclick="sortGallery('type')">
-                                <span class="fa fa-sort-alpha-down selIcon"></span>
-                            </div>
-                            <div class="btn btn-secondary iconBtn" id="sortDirection" onclick="sortGallery('direction')">
-                                <span class="fa fa-sort-down dirIcon"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+		<div class="form-inline my-2 my-lg-0">
+			<div class="inputWrap row justify-content-center">
+				<input type="text" id="divFilter" class="form-control" placeholder="Filter" aria-label="Filter" aria-describedby="btnGroupAddon">
+				<div class="btn-group" role="group" aria-label="">
+					<div class="btn btn-secondary iconBtn" id="sortType" onclick="sortGallery('type')">
+						<span class="fa fa-sort-alpha-down selIcon"></span>
+					</div>
+					<div class="btn btn-secondary iconBtn" id="sortDirection" onclick="sortGallery('direction')">
+						<span class="fa fa-sort-down dirIcon"></span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 
-            <div class="sortWrap">
-                <div class="btn-grp" role="group">
+	<div class="sortWrap">
+		<div class="btn-grp" role="group">
 
-                </div>
-            </div>
-        </nav>
-        <div id="galleryDiv" class="gridContainer">
-            <div id="galleryContent" class="grid fadeOut"></div>
-            <div id='loader' class="lds-ripple"><div></div><div></div></div>
-        </div>
-        <div id="scrollTip"></div>
-        <div id="galleryModal" class="galleryModal">
-            <div id="fullWrap">
-                <div class="full_image fit active imgItem animated faster"></div>
+		</div>
+	</div>
+</nav>
+<div id="galleryDiv" class="gridContainer">
+	<div id="galleryContent" class="sortGrid fadeOut"></div>
+	<div id='loader' class="lds-ripple"><div></div><div></div></div>
+</div>
+<div id="scrollTip"></div>
+<div id="lightContent" class="hide">
 
-                <video id="video1" class="vidItem animated faster">
-                    <source type="video/mp3" src="">
-                    <source type="video/ogg" src="">
-                    <source type="video/mp4" src="">
-                    <source type="video/mov" src="">
-                    <source type="video/mkv" src="">
-                    <source type="video/mv4" src="">
-                    <source type="video/webm" src="">
-                    Your browser does not support HTML5 video.
-                </video>
+</div>
+<div id="waitModal" class="waitModal">
+	<table class="dhmg_disp">
+		<tr>
+			<td class="mid">
+				<div id="wait"></div>
+			</td>
+		</tr>
+	</table>
+</div>
+<div id="infoModal" class="infoModal">
+	<div id="box_inner_info"></div>
+</div>
 
-            </div>
-            <div id="mediaTitle" class="navBtn mediaText"></div>
-            <div id="mediaInfo" class="navBtn mediaText"></div>
-            <div id="cycleLeft" class="navBtn fadeOut left cycleBtn">
-                <div class="cycleIndicator left">
-                    <span class="fa fa-chevron-left"></span>
-                </div>
-            </div>
-            <div id="cycleRight" class="navBtn fadeOut right cycleBtn">
-                <div class="cycleIndicator right">
-                    <span class="fa fa-chevron-right"></span>
-                </div>
-            </div>
-            <div id="closeBtn" class="navBtn fadeOut" onclick="closeMedia()">
-                <span class="fa fa-window-close"></span>
-            </div>
-            <div id="fullToggle" class="navBtn fadeOut">
-                <span class="fa fa-expand toggleIcon"></span>
-            </div>
-        </div>
-        <div id="waitModal" class="waitModal">
-            <table class="dhmg_disp">
-                <tr>
-                    <td class="mid">
-                        <div id="wait"></div>
-                    </td>
-                </tr>
-            </table>
-        </div>
-        <div id="infoModal" class="infoModal">
-            <div id="box_inner_info"></div>
-        </div>
+<script src="./_resources/js/lib/jquery-3.3.1.min.js"></script>
+<script src="./_resources/js/lib/js.cookie.min.js"></script>
+<script src="./_resources/js/lib/shuffle.min.js"></script>
+<script src="./_resources/js/lib/lightgallery.min.js"></script>
+<script src="./_resources/js/lib/lightgallery-all.min.js"></script>
+<script src="./_resources/js/lib/popper.min.js"></script>
+<script src="./_resources/js/lib/bootstrap.min.js"></script>
+<script src="./_resources/js/lib/blazy.min.js"></script>
+<script src="./_resources/js/main.js"></script>
 
-        <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
-        <script src="https://code.jquery.com/ui/1.12.0/jquery-ui.min.js" integrity="sha256-eGE6blurk5sHj+rmkfsGYeKyZx3M4bG+ZlFyA7Kns7E=" crossorigin="anonymous"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/js-cookie@2/src/js.cookie.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/lozad/dist/lozad.min.js"></script>
-        <script src="./_resources/js/touch-emulator.js"></script>
-        <script src='https://unpkg.com/panzoom@7.1.0/dist/panzoom.min.js'></script>
-        <script src="./_resources/js/main.js"></script>
-
-    </body>
+</body>
 </html>

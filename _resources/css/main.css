@@ -28,6 +28,10 @@
     --color-button-infobox-border: '#404040';
 }
 
+body {
+    background-color: #9f9f9f;
+}
+
 img {
     -ms-interpolation-mode: bicubic;
 }
@@ -89,12 +93,13 @@ video {
 }
 
 #galleryDiv {
-
     width: 100%;
-    padding-top: 72px;
+    height: calc(100% - 46px);
+    top: 46px;
+    overflow-y: scroll;
     padding-bottom: 25px;
-
-    margin: 0 auto;
+    position: fixed;
+    padding-top: 10px;
     max-width: 100%;
     text-align: center;
     background-color: #9f9f9f;
@@ -161,6 +166,22 @@ video {
     bottom: 62px;
     right: 208px;
     z-index: 1131;
+}
+
+.aspect {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 100%;
+    overflow: hidden;
+}
+
+.aspect__inner {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
 }
 
 .breadcrumb {
@@ -243,26 +264,8 @@ video {
     transition: all .25s;
 }
 
-.galleryModal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width:100%;
-    height: 100%;
-    background: black;
-    z-index: 10000;
-    overflow: auto;
-    display: none;
-    text-align: center;
-}
-
 .hide {
     display: none;
-}
-
-.imgItem, .vidItem {
-    -webkit-transition-duration: 600ms;
-    transition-duration: 600ms;
 }
 
 .thumbDiv {
@@ -270,6 +273,8 @@ video {
     overflow: hidden;
     padding: 0;
     color: white;
+    max-width: 250px;
+    max-height: 250px;
 }
 
 .thumbDiv:hover, .thumbDiv:hover .decorator {
@@ -290,48 +295,8 @@ video {
 }
 
 .responsive-image {
-    max-width:100%;
     width: 100%;
-    min-width: 100px;
-    min-height: 100px;
-}
-
-.cell {
-    padding: 0;
-    min-width: 160px;
-    max-width: 250px;
-    min-height: 160px;
-    max-height: 250px;
-}
-
-.cell img {
-    display: block;
-}
-
-
-@media screen and (max-width: 600px) {
-
-    .cell {
-        width: calc(50%);
-    }
-}
-
-@media screen and (min-width: 600px) {
-    .cell {
-        width: calc(100% / 3);
-    }
-}
-
-@media screen and (min-width: 1000px) {
-    .cell {
-        width: calc(100% / 5);
-    }
-}
-
-@media screen and (min-width: 1000px) {
-    .cell {
-        width: calc(100% / 5);
-    }
+    height: 100%;
 }
 
 .lds-ripple {
