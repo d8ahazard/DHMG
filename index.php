@@ -1,51 +1,49 @@
 <?php
 /*
 
-Digitalhigh's Multimedia Gallery 1.0.0
+Digitalhigh's Multimedia Gallery 1.1.0
 
-Released: January 1, 2019
+Released: January 3, 2022
 by Digitalhigh
 
 */
 
-if (file_exists("./_sort/sort.php")) require_once("./_sort/sort.php");
+//if (file_exists("./_sort/sort.php")) require_once("./_sort/sort.php");
 
-define('GALLERY_NAME', 'Pocket Gallery');
-//define('FFMPEG_PATH', 'D:\xampp\ffmpeg.exe');
-define('FFMPEG_PATH', 'ffmpeg');
-
+const GALLERY_NAME = 'Pocket Gallery';
+const FFMPEG_PATH = 'ffmpeg';
 
 
-define('EXCLUDE_ARRAY', [ // Add files here to ignore in listing
-		"_data",
-        "_sort",
-        '_dirData',
-        "_dirList",
-        '_resources',
-        '@eaDir',
-        '.idea',
-        'img',
-        'logs',
-        '.php',
-        '.txt',
-        '.sell',
-        '.db',
-        '.json',
-        '.js',
-        '.css',
-        '.html',
-		'.ico',
-		'.bk',
-		'.htaccess'
-	]);
+const EXCLUDE_ARRAY = [ // Add files here to ignore in listing
+	"_data",
+	"_sort",
+	'_dirData',
+	"_dirList",
+	'_resources',
+	'@eaDir',
+	'.idea',
+	'img',
+	'logs',
+	'.php',
+	'.txt',
+	'.sell',
+	'.db',
+	'.json',
+	'.js',
+	'.css',
+	'.html',
+	'.ico',
+	'.bk',
+	'.htaccess'
+];
 
-define('SHOW_IMAAGES', true);
-define('SHOW_VIDEOS', true);
-define('SHOW_FILES', true);
+const SHOW_IMAGES = true;
+const SHOW_VIDEOS = true;
+const SHOW_FILES = true;
 
 // UI maxes out at 250, so there's no reason to make this larger.
 // Decrease to save a little space/speed
-define('THUMB_SIZE', 250);
+const THUMB_SIZE = 250;
 
 //	----------- CONFIGURATION END ------------
 $root = fixPath(dirname(__FILE__));
@@ -153,8 +151,8 @@ function _initialize() {
 		} else {
 			$active = "";
 			$inner = "<a href='$link'>$name</a>";
-		};
-		$lines[] = "<li class='breadcrumb-item${active}' aria-current='page'>$inner</li>";
+		}
+		$lines[] = "<li class='breadcrumb-item$active' aria-current='page'>$inner</li>";
 		$i++;
 	}
 	$header = implode(PHP_EOL, $lines);
@@ -229,14 +227,13 @@ function dirJson($path) {
 	    if (getTime($path) === getTime(INFO)) {
             write_log("File times match!.");
             $data['items'] = json_decode(file_get_contents(INFO), true);
-            return json_encode($data);
-        } else {
+	    } else {
 	        write_log("File times don't match: ". getTime($path) . ' and ' . getTime(INFO));
 	        $data['items'] = updateDir($path);
 	        putInfo($path, $data['items']);
-	        return json_encode($data);
-        }
-    }
+	    }
+		return json_encode($data);
+	}
 
     $data['items'] = listDir($path);
 	putInfo($path, $data['items']);
@@ -249,11 +246,11 @@ function dirJson($path) {
  * Reads and returns a type for a path.
  * If returnType is set, it returns the filetype, otherwise, a classifaction.
  *
- * @param $file
+ * @param string $file
  * @param bool $returnType
  * @return string
  */
-function fileId($file, $returnType = false) {
+function fileId(string $file, bool $returnType = false): string {
 	$parts = explode(".", $file);
 	$type = strtolower(array_pop($parts));
 	$image_types = ['jpg', 'jpeg', 'png', 'gif'];
@@ -280,7 +277,7 @@ function fileId($file, $returnType = false) {
  * @param $file
  * @return bool
  */
-function filterFile($file) {
+function filterFile($file): bool {
 	foreach(EXCLUDE_ARRAY as $exclude) {
 		if (preg_match("#$exclude#", $file['name'])) return false;
 	}
@@ -291,7 +288,7 @@ function filterFile($file) {
 		case 'file':
 			return SHOW_FILES;
 		case 'img':
-			return SHOW_IMAAGES;
+			return SHOW_IMAGES;
 		default:
 			return true;
 	}
@@ -303,7 +300,7 @@ function filterFile($file) {
  * Makes a windows path normal
  *
  * @param $path
- * @return mixed
+ * @return array|string|string[]
  */
 function fixPath($path) {
 	return str_replace("\\", "/", $path);
@@ -316,7 +313,7 @@ function fixPath($path) {
  *
  * @return string
  */
-function getCaller() {
+function getCaller(): string {
 	$trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
 	$callers = [];
 	foreach ($trace as $event) {
@@ -325,10 +322,13 @@ function getCaller() {
 			$event['function'] !== "initialize" &&
 			$event['function'] !== "analyzeRequest") array_push($callers, $event['function']);
 	}
-	$info = join(":", array_reverse($callers));
-	return $info;
+	return join(":", array_reverse($callers));
 }
 
+/**
+ * @param $resource
+ * @return array|false|mixed|string|string[]
+ */
 
 function getThumb($resource) {
 	$or = $resource;
@@ -379,7 +379,6 @@ function getThumb($resource) {
 				write_log("ERROR, DEST PATH IS SAME AS SOURCE.", "ERROR");
 			}
 			write_log("Image should be created...");
-			//imagedestroy($new_image);
 		}
 	}
 	if (file_exists($thumbPath)) write_log("Returning $thumbPath"); else write_log("ERROR PLACING IMAGE TO $thumbPath", "ERROR");
@@ -413,14 +412,14 @@ function getTime($item) {
  * @param int $h
  * @return bool
  */
-function imageVid($movie, $out, $w, $h) {
+function imageVid(string $movie, string $out, int $w, int $h): bool {
 	$movie = realpath($movie);
 	write_log("Trying to convert $movie to $out.");
-	$time = "00:00:10";
+	$time = "00:00:07";
 	$cmd = FFMPEG_PATH . " -i '$movie' 2>&1";
 	exec($cmd, $results);
 	foreach($results as $line) {
-		if (preg_match("/Duration:/", $line)) {
+        if (preg_match("/Duration:/", $line)) {
 			$len = explode(",", str_replace("Duration: ", "", $line))[0];
 			$seconds = strtotime($len) - strtotime('00:00:00');
 			$int = $seconds / 2;
@@ -429,17 +428,21 @@ function imageVid($movie, $out, $w, $h) {
 			write_log("Clip is $seconds long, half is $int, time should be $time");
 		}
 	}
-	$cmd2 = FFMPEG_PATH . " -ss $time -i \"$movie\" -frames:v 1 -q:v 2 -vf \"scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}\" \"$out\" 2>&1";
+	$cmd2 = FFMPEG_PATH . " -ss $time -i \"$movie\" -frames:v 1 -q:v 2 -vf \"scale=$w:$h:force_original_aspect_ratio=increase,crop=$w:$h\" \"$out\" 2>&1";
 	write_log("Command is $cmd2");
 	exec($cmd2, $results);
+    $failed = false;
+    $op = false;
 	foreach($results as $line) {
-		if (preg_match("/Output #/", $line)) {
+        if (preg_match("/Output file is empty, nothing was encoded/", $line)) {
+            $failed = true;
+        } else if (preg_match("/Output #/", $line)) {
 			write_log("looks like we were successful...");
-			return true;
+			$op = true;
 
 		}
 	}
-	return true;
+    return (!$failed && $op);
 }
 
 
@@ -450,10 +453,10 @@ function imageVid($movie, $out, $w, $h) {
  * and return ONLY that item
  *
  * @param $path
- * @param $thumbOnly
+ * @param bool $thumbOnly
  * @return array|bool|mixed
  */
-function listDir($path, $thumbOnly = false) {
+function listDir($path, bool $thumbOnly = false) {
     if (!$thumbOnly) write_log("Trying to list $path");
 	$results = [];
 	$thumbs = [];
@@ -468,7 +471,7 @@ function listDir($path, $thumbOnly = false) {
 			'type' => $type,
             'link' => pathify($path . "/" . $name)
 		];
-		$thumb = $thumbPath = false;
+		$thumb = false;
 		if (filterFile($item)) {
 			if ($type === 'img' || $type === 'vid') $thumb = $path . "/" . $name;
 			if ($item['type'] === 'dir') $thumb = listDir($path . "/" . $name, true);
@@ -516,7 +519,7 @@ function localPath($path) {
  * @param $path
  * @return array
  */
-function makeLinks($path) {
+function makeLinks($path): array {
 	write_log("Making links for path: $path");
 	$paths = [];
 	$homePath = ['name' => 'Home', 'link' => pathify("./")];
@@ -544,7 +547,7 @@ function makeLinks($path) {
  * @param $dir
  * @return bool
  */
-function mkDirs($dir) {
+function mkDirs($dir): bool {
 	return (is_dir($dir)) ? is_readable($dir) : mkdir($dir, 0777, true);
 }
 
@@ -553,13 +556,13 @@ function mkDirs($dir) {
  *
  * Convert a path to a base64-encoded value, or decode if $decode is true
  *
- * @param $path
+ * @param string $path
  * @param bool $decode
  * @return string
  */
-function pathify($path, $decode=false) {
+function pathify(string $path, bool $decode = false): string {
 	if ($decode) {
-	    $padded = str_pad(strtr($path, '-_', '+/'), strlen($path) % 4, '=', STR_PAD_RIGHT);
+	    $padded = str_pad(strtr($path, '-_', '+/'), strlen($path) % 4, '=');
 	    $out = base64_decode($padded);
 		write_log("padded to $padded, returning $out");
         return $out;
@@ -586,76 +589,6 @@ function putInfo($path, $data) {
 	touch(INFO, $time);
 }
 
-
-/**
- *
- * Recursively remove directories
- *
- * @param $dir
- * @return bool
- */
-function rmDirs($dir) {
-	if (!file_exists($dir)) return true;
-	if (str_replace(DATA_ROOT, GALLERY_ROOT, $dir) === $dir) {
-		write_log("Looking for ". DATA_ROOT . " in $dir");
-		write_log("NO.");
-		return false;
-	}
-	if (!is_dir($dir)) return unlink($dir);
-
-	foreach (scandir($dir) as $item) {
-		if ($item == '.' || $item == '..' || $item == "/") {
-			write_log("'$item' is either the current/parent directory, root folder, or not data root. Not doing it.", "ERROR");
-			continue;
-		}
-		if (!rmDirs($dir.DIRECTORY_SEPARATOR.$item)) return false;
-	}
-	return rmdir($dir);
-}
-
-
-/**
- *
- * Generate a random token
- *
- * @param int $length
- * @return bool|string
- */
-function randomToken($length = 32) {
-	if (!isset($length) || intval($length) <= 8) {
-		$length = 32;
-	}
-	if (function_exists('openssl_random_pseudo_bytes')) {
-		write_log("Generating using pseudo_random.");
-		return bin2hex(openssl_random_pseudo_bytes($length));
-	}
-	$val = false;
-	// Keep this last, as there appear to be issues with random_bytes and Docker.
-	if (function_exists('random_bytes')) {
-		write_log("Generating using random_bytes.");
-		try {
-			$val = bin2hex(random_bytes($length));
-		} catch (Exception $e) {
-		}
-	}
-	if (!$val) {
-		$randomStr = '';
-		$chars='0123456789abcdefghijklmnopqrstuvwxyz!@#$%%^&*()_+=-';
-		$i = 0;
-		$allowedMaxIdx = mb_strlen($chars) - 1;
-		while ($i < $length) {
-			try {
-				$randomStr .= $chars[random_int(0, $allowedMaxIdx)];
-			} catch (Exception $e) {
-			}
-			$i++;
-		}
-		$val = ($randomStr) ? $randomStr : false;
-	}
-	return $val;
-}
-
-
 function queueThumbs($thumbs) {
     $queuePath = THUMB_DIR . "/queue";
     mkDirs($queuePath);
@@ -674,7 +607,7 @@ function queueThumbs($thumbs) {
 }
 
 
-function setFavorite($item, $delete = false) {
+function setFavorite($item, $delete = false): bool {
 	$result = false;
 	$fetch = false;
 	if (function_exists('filterDir') && !$delete) $fetch = filterDir($item);
@@ -732,7 +665,7 @@ function write_log($text, $level = false) {
 		$now = DateTime::createFromFormat('U.u', $aux);
 	}
 	$date = $now->format("m-d-Y H:i:s.u");
-	$level = $level ? $level : "DEBUG";
+	$level = $level ?: "DEBUG";
 	$caller = getCaller() ?? "foo";
 
 	$line = "[$date] [$level] [$caller] - $text" . PHP_EOL;
@@ -760,7 +693,7 @@ function xit($msg=false) {
 
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="EN">
 <head>
 	<link rel="shortcut icon" href="./_resources/img/favicon.ico">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
@@ -769,7 +702,7 @@ function xit($msg=false) {
 	<title><?php echo GALLERY_NAME ?></title>
 	<link rel="stylesheet" href="./_resources/css/lib/all.min.css">
 	<link rel="stylesheet" href="./_resources/css/lib/bootstrap.min.css">
-	<link rel="stylesheet" href="./_resources/css/lightgallery.min.css">
+    <link type="text/css" rel="stylesheet" href="./_resources/css/lightgallery-bundle.css" />
 	<link rel='stylesheet' href='./_resources/css/main.css'>
 </head>
 <body>
@@ -810,10 +743,7 @@ function xit($msg=false) {
 	<div id="galleryContent" class="sortGrid fadeOut"></div>
 	<div id='loader' class="lds-ripple"><div></div><div></div></div>
 </div>
-<div id="scrollTip"></div>
-<div id="lightContent" class="hide">
 
-</div>
 <div id="waitModal" class="waitModal">
 	<table class="dhmg_disp">
 		<tr>
@@ -830,8 +760,14 @@ function xit($msg=false) {
 <script src="./_resources/js/lib/jquery-3.3.1.min.js"></script>
 <script src="./_resources/js/lib/js.cookie.min.js"></script>
 <script src="./_resources/js/lib/shuffle.min.js"></script>
-<script src="./_resources/js/lib/lightgallery.min.js"></script>
-<script src="./_resources/js/lib/lightgallery-all.min.js"></script>
+<script src="./_resources/lightgallery.umd.js"></script>
+
+<!-- lightgallery plugins -->
+<script src="./_resources/plugins/fullscreen/lg-fullscreen.umd.js"></script>
+<script src="./_resources/plugins/zoom/lg-zoom.umd.js"></script>
+<script src="./_resources/plugins/autoplay/lg-autoplay.umd.js"></script>
+<script src="./_resources/plugins/video/lg-video.umd.js"></script>
+<script src="./_resources/plugins/pager/lg-pager.umd.js"></script>
 <script src="./_resources/js/lib/popper.min.js"></script>
 <script src="./_resources/js/lib/bootstrap.min.js"></script>
 <script src="./_resources/js/lib/blazy.min.js"></script>
