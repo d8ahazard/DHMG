@@ -117,8 +117,10 @@ function _initialize() {
 	    write_log("BUILD A DAMNED THUMB");
 	    //echo "$path";
 		$queuePath = THUMB_DIR . "/queue";
-		if (is_dir($path)) $path = listDir($path, true);
-		$thumb = getThumb($path);
+        $thumb = "";
+        $thumbs = [];
+		if (is_dir($path)) $thumbs = listDir($path, true);
+		if (count($thumbs) > 0) $thumb = getThumb($thumbs[0]);
 		write_log("Returning thumb from $thumb");
 	    if (file_exists($thumb)) {
 			$queueId = pathify($thumb);
@@ -186,6 +188,7 @@ function buildThumbs() {
 /**
  *
  * Sends a CURL command without waiting for a reply
+ * Used to trigger a build of the thumbs data if needed.
  *
  * @param $url
  */
@@ -297,7 +300,7 @@ function filterFile($file): bool {
 
 /**
  *
- * Makes a windows path normal
+ * Makes a Windows path normal
  *
  * @param $path
  * @return array|string|string[]
@@ -454,9 +457,9 @@ function imageVid(string $movie, string $out, int $w, int $h): bool {
  *
  * @param $path
  * @param bool $thumbOnly
- * @return array|bool|mixed
+ * @return string[]
  */
-function listDir($path, bool $thumbOnly = false) {
+function listDir($path, bool $thumbOnly = false) : array {
     if (!$thumbOnly) write_log("Trying to list $path");
 	$results = [];
 	$thumbs = [];
@@ -471,26 +474,36 @@ function listDir($path, bool $thumbOnly = false) {
 			'type' => $type,
             'link' => pathify($path . "/" . $name)
 		];
-		$thumb = false;
+		$thumb = "";
+        $thumbs = [];
 		if (filterFile($item)) {
 			if ($type === 'img' || $type === 'vid') $thumb = $path . "/" . $name;
-			if ($item['type'] === 'dir') $thumb = listDir($path . "/" . $name, true);
-			if ($thumb) {
+            if ($item['type'] === 'dir') $thumbs = listDir($path . "/" . $name, true);
+            if (count($thumbs) > 0) $thumb = $thumbs[0];
+			if ($thumb != "") {
 			    $fixed = str_replace("./", "/", $thumb);
 			    $thumbPath = THUMB_DIR . "/$fixed.png";
 			    $thumbPath = str_replace("//", "/", $thumbPath);
 				if (!file_exists($thumbPath)) $thumbs[] = $thumb;
 				$item['thumb'] = localPath($thumbPath);
-				if ($thumbOnly) return $thumb;
+				if ($thumbOnly) {
+					return [$thumb];
+				}
             }
 			$results[] = $item;
 		}
 	}
-    if ($thumbOnly) return false;
+    if ($thumbOnly) return $results;
     if (count($thumbs)) queueThumbs($thumbs);
     return $results;
 }
 
+
+/**
+ * List favorited items in a specific path
+ * @param $path
+ * @return array|false
+ */
 
 function listFav($path) {
     if ($path === ".") $path = "";
@@ -507,8 +520,12 @@ function listFav($path) {
 	return $favorites;
 }
 
-
-function localPath($path) {
+/**
+ * Get the path of an item local to the script.
+ * @param string $path
+ * @return string
+ */
+function localPath(string $path): string {
     $out = str_replace(ROOT, ".", $path);
     if ($out === "") $out = ".";
     return $out;
@@ -516,10 +533,11 @@ function localPath($path) {
 
 
 /**
- * @param $path
+ * Create relevant links for a given path
+ * @param string $path
  * @return array
  */
-function makeLinks($path): array {
+function makeLinks(string $path): array {
 	write_log("Making links for path: $path");
 	$paths = [];
 	$homePath = ['name' => 'Home', 'link' => pathify("./")];
@@ -544,10 +562,10 @@ function makeLinks($path): array {
  *
  * Recursively create a directory if it doesn't exist
  *
- * @param $dir
- * @return bool
+ * @param string $dir Input Directory
+ * @return bool Whether the directory exists and is readable.
  */
-function mkDirs($dir): bool {
+function mkDirs(string $dir): bool {
 	return (is_dir($dir)) ? is_readable($dir) : mkdir($dir, 0777, true);
 }
 
@@ -589,7 +607,11 @@ function putInfo($path, $data) {
 	touch(INFO, $time);
 }
 
-function queueThumbs($thumbs) {
+/**
+ * Queue a list of files that need thumbnails generated.
+ * @param string[] $thumbs
+ */
+function queueThumbs(array $thumbs) {
     $queuePath = THUMB_DIR . "/queue";
     mkDirs($queuePath);
     foreach($thumbs as $thumb) {
@@ -606,8 +628,13 @@ function queueThumbs($thumbs) {
 	curlQuick($url);
 }
 
-
-function setFavorite($item, $delete = false): bool {
+/**
+ * Mark (or unmark) an item as a favorite.
+ * @param string $item The item to mark.
+ * @param bool $delete If true, item will be unmarked as a favorite.
+ * @return bool
+ */
+function setFavorite(string $item, bool $delete = false): bool {
 	$result = false;
 	$fetch = false;
 	if (function_exists('filterDir') && !$delete) $fetch = filterDir($item);
@@ -628,8 +655,11 @@ function setFavorite($item, $delete = false): bool {
 	return $result;
 }
 
-
-function updateDir($path) {
+/**
+ * @param string $path
+ * @return string[]
+ */
+function updateDir(string $path) : array {
     $existing = json_decode(file_get_contents(INFO), true);
     $current = listDir($path);
     $del = array_diff_assoc($existing, $current);
