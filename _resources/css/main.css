@@ -113,8 +113,13 @@ video {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 10px;
+    align-items: start;
+    gap: 5px;
     padding: 10px;
+    max-width: 100%;
+    margin: 0 auto;
+    min-height: 200px;
+    background: url('/images/loading.gif') center center no-repeat;
 }
 
 #mediaInfo {
@@ -232,7 +237,7 @@ video {
 .favIcon {
     position: absolute;
     right: 10px;
-    bottom: 10px;
+    top: 10px;
     color: white;
     cursor: pointer;
     width: 25px;
@@ -275,6 +280,9 @@ video {
     margin: 5px;
     position: relative;
     cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.1);
+    overflow: hidden;
 }
 
 .thumbDiv:hover, .thumbDiv:hover .decorator {
@@ -299,6 +307,30 @@ video {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 8px;
+}
+
+.responsive-image.reloaded {
+    object-fit: contain;
+    padding: 20%;
+    background: #343a40;
+}
+
+.video-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 64px;
+    height: 64px;
+    z-index: 2;
+    opacity: 0.8;
+    pointer-events: none;
+}
+
+.video-overlay img {
+    width: 100%;
+    height: 100%;
 }
 
 .lds-ripple {
@@ -407,7 +439,7 @@ video {
 .typeIcon {
     position: absolute;
     left: 10px;
-    bottom: 10px;
+    top: 10px;
     color: white;
     width: 25px;
     height: 25px;

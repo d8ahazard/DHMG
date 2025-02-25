@@ -223,7 +223,7 @@
     <div class="breadcrumbs">
         {% for crumb in breadcrumbs %}
             {% if not loop.last %}
-                <a href="/?id={{ crumb.link }}">{{ crumb.name }}</a> /
+                <a href="./?id={{ crumb.link }}">{{ crumb.name }}</a> /
             {% else %}
                 {{ crumb.name }}
             {% endif %}

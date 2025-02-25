@@ -124,10 +124,55 @@ function addElements(elements) {
 
         if (type === 'vid') {
             typeIcon = 'video';
-            let vidType = mediaPath.substr((mediaPath.lastIndexOf('.') + 1));
+            // Decode base64 to get the actual filename
+            let decodedLink = atob(obj['link']);
+            let vidType = decodedLink.split('.').pop().toLowerCase();
+            console.log("Video initialization:", {
+                mediaPath,
+                vidType,
+                decodedLink,
+                fullPath: './file?id=' + encodeURIComponent(obj['link'])
+            });
             mDiv.classList.add("video");
-            mDiv.setAttribute("data-lg-size", "1920-1080");
-            mDiv.setAttribute("data-video",'{"source": [{"src":"'+mediaPath+'", "type":"video/'+vidType+'"}], "attributes": {"preload": false, "playsinline": true, "controls": true}}');
+            mDiv.classList.add("media");
+            
+            // Create video configuration exactly as per lightGallery documentation
+            const videoConfig = {
+                source: [{
+                    src: './file?id=' + encodeURIComponent(obj['link']),
+                    type: `video/${vidType}`  // Now using the actual file extension
+                }],
+                attributes: {
+                    preload: false,
+                    playsinline: true,
+                    controls: true
+                }
+            };
+            
+            // Set data-video attribute with stringified config
+            console.log("Setting video config:", videoConfig);
+            mDiv.setAttribute("data-video", JSON.stringify(videoConfig));
+            
+            // For videos, we don't set data-src as per documentation
+            mDiv.removeAttribute("data-src");
+            
+            // Test video URL accessibility
+            fetch(mediaPath, { 
+                method: 'HEAD',
+                headers: {
+                    'Range': 'bytes=0-0'
+                }
+            })
+            .then(response => {
+                console.log(`Video URL check (${mediaPath}):`, {
+                    ok: response.ok,
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers)
+                });
+            })
+            .catch(error => {
+                console.error(`Error checking video URL (${mediaPath}):`, error);
+            });
         }
 
         mDiv.setAttribute("data-name", name);
@@ -136,17 +181,27 @@ function addElements(elements) {
         mDiv.setAttribute("data-size", obj['size']);
         mDiv.setAttribute("data-link", obj['link']);
         if (isFav) mDiv.setAttribute("data-favorite", "true");
-        if (type === "vid") {
-            mDiv.setAttribute("data-html", "#" + key + "vid");
-        } else {
-            mDiv.setAttribute("data-src", mediaPath)
+        if (type === "img") {
+            mDiv.setAttribute("data-src", mediaPath);
         }
 
         let ri = document.createElement("img");
         ri.classList.add("responsive-image", "b-lazy");
         ri.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==");
         ri.setAttribute("data-src", thumbPath);
-        ri.setAttribute("data-src-fallback", thumbAlt);
+        
+        // Set type-specific fallback images
+        let fallbackImage;
+        if (type === 'dir') {
+            fallbackImage = '/img/folder.png';
+        } else if (type === 'vid') {
+            fallbackImage = '/img/video.png';
+        } else if (type === 'img') {
+            fallbackImage = '/img/image.png';
+        } else {
+            fallbackImage = '/img/file.png';
+        }
+        ri.setAttribute("data-src-fallback", fallbackImage);
         ri.setAttribute("loading", "lazy");
 
         let ai = document.createElement("div");
@@ -154,6 +209,16 @@ function addElements(elements) {
 
         let a = document.createElement("div");
         a.classList.add("aspect");
+
+        // Add video overlay for video files
+        if (type === 'vid') {
+            let overlay = document.createElement("div");
+            overlay.classList.add("video-overlay");
+            let playIcon = document.createElement("img");
+            playIcon.src = '/img/play_video.png';
+            overlay.appendChild(playIcon);
+            a.appendChild(overlay);
+        }
 
         ai.appendChild(ri);
         a.appendChild(ai);
@@ -210,10 +275,6 @@ function buildGallery() {
     sortElements();
     new Blazy({
         container: '#galleryContent',
-        success: function(ele){
-            // Image has loaded successfully
-            console.log("Image loaded successfully:", ele.getAttribute('data-src'));
-        },
         error: function(ele, msg){
             console.log("Primary image load failed, trying fallback:", ele.getAttribute('data-src-fallback'));
             ele.src = ele.getAttribute('data-src-fallback');
@@ -228,11 +289,8 @@ function buildGallery() {
 function initGallery() {
     try {
         if (lg) {
-            try {
-                lg.destroy();
-            } catch (e) {
-                console.warn('Error destroying previous lightGallery instance:', e);
-            }
+            console.log("Destroying existing gallery instance");
+            lg.destroy();
             lg = null;
         }
         
@@ -245,15 +303,29 @@ function initGallery() {
         }
 
         const mediaItems = mediaArray.filter(item => item.type === 'img' || item.type === 'vid');
+        console.log("Filtered media items:", mediaItems);
+        
         if (mediaItems.length === 0) {
             console.log('No media items to display');
             return;
         }
+
+        const speed = parseInt($('#slideshowSpeed').val() || 3) * 1000;
         
-        lg = lightGallery($lgGalleryMethodsDemo, {
+        // Log all video elements and their configurations
+        const videoElements = document.querySelectorAll('.video');
+        console.log("Video elements found:", videoElements.length);
+        videoElements.forEach((el, index) => {
+            console.log(`Video element ${index}:`, {
+                html: el.getAttribute('data-html'),
+                link: el.getAttribute('data-link')
+            });
+        });
+
+        const galleryConfig = {
             plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
             speed: 500,
-            selector: '.thumbDiv.media.shuffle-item--visible',
+            selector: '.media',
             preload: 2,
             appendCounterTo: '.navbar',
             hash: false,
@@ -262,18 +334,52 @@ function initGallery() {
             download: false,
             counter: true,
             autoplayControls: true,
-            slideShowAutoplay: isSlideshow,
-            slideShowInterval: $('#slideshowSpeed').val() * 1000,
+            autoplay: isSlideshow,
+            autoplayFirstVideo: false,
+            pauseOnHover: true,
+            slideDelay: speed,
             progressBar: true,
             mode: isRandom ? 'lg-slide-random' : 'lg-slide',
             addClass: 'lg-custom-thumbnails',
-            licenseKey: 'your-license-key',
             mobileSettings: {
                 controls: true,
                 showCloseIcon: true,
                 download: false
+            },
+            video: true,
+            videojs: false,
+            onBeforeOpen: () => {
+                console.log("Gallery about to open");
+            },
+            onAfterOpen: () => {
+                console.log("Gallery opened");
+                const items = lg.galleryItems;
+                console.log("Gallery items:", items);
+            },
+            onSlideItemLoad: (detail) => {
+                const { index, isFirstSlide } = detail;
+                const item = lg.galleryItems[index];
+                console.log("Loading item:", {
+                    index,
+                    isFirstSlide,
+                    item,
+                    videoConfig: item.video
+                });
+            },
+            onBeforeSlide: (detail) => {
+                console.log("Before slide change:", detail);
+            },
+            onAfterSlide: (detail) => {
+                console.log("After slide change:", detail);
+                const { index } = detail;
+                const currentItem = lg.galleryItems[index];
+                console.log("Current slide item:", currentItem);
+                updateSlideshowButtonState();
             }
-        });
+        };
+        
+        console.log("Initializing lightGallery with config:", galleryConfig);
+        lg = lightGallery($lgGalleryMethodsDemo, galleryConfig);
 
         // Handle navigation fade
         if (lg.$container) {
@@ -282,19 +388,27 @@ function initGallery() {
                 navTimeout = setTimeout(hideNavigation, 2000);
             });
         }
-
-        // Update slideshow button state when autoplay changes
-        lg.$container.on('lgAfterSlide', function() {
-            const isPlaying = lg.$container.find('.lg-autoplay-button').hasClass('lg-icon-pause');
-            const icon = $('#slideshowBtn').find('i');
-            if (isPlaying) {
-                icon.removeClass('fa-play').addClass('fa-pause');
-            } else {
-                icon.removeClass('fa-pause').addClass('fa-play');
-            }
+        
+        console.log("Gallery initialized with config:", {
+            isSlideshow,
+            isRandom,
+            speed,
+            mediaItems: mediaItems.length
         });
     } catch (error) {
-        console.error('Error initializing lightGallery:', error);
+        console.error('Error initializing lightGallery:', error.stack);
+    }
+}
+
+function updateSlideshowButtonState() {
+    if (!lg || !lg.$container) return;
+    
+    const isPlaying = lg.autoplay;
+    const icon = $('#slideshowBtn').find('i');
+    if (isPlaying) {
+        icon.removeClass('fa-play').addClass('fa-pause');
+    } else {
+        icon.removeClass('fa-pause').addClass('fa-play');
     }
 }
 
@@ -366,24 +480,21 @@ function openFile(id) {
 
 function openGallery(id) {
     console.log("Opening gallery with id:", id);
-    // Get the current path from the page
-    let currentPath = $('#pageKey').attr('content');
-    let newPath;
-    
-    if (currentPath && currentPath !== "") {
-        // We're in a subdirectory, so append the new directory to the current path
-        let decodedCurrent = decodeURIComponent(currentPath);
-        console.log("Current decoded path:", decodedCurrent);
-        newPath = id;  // Use the full path provided by the server
-    } else {
-        // We're at root, so just use the id directly
-        newPath = id;
+    if (!id) {
+        console.error("Invalid gallery ID");
+        return;
     }
     
-    console.log("New path:", newPath);
-    let path = './?id=' + encodeURIComponent(newPath);
-    let currentYOffset = $('#galleryDiv').scrollTop();
-    pageCookieSet('scrollPosition', currentYOffset);
+    // The id parameter is already the encoded path from the server
+    // so we can use it directly
+    let path = './?id=' + encodeURIComponent(id);
+    
+    // Save scroll position before navigation
+    const galleryDiv = document.getElementById('galleryDiv');
+    if (galleryDiv) {
+        pageCookieSet('scrollPosition', galleryDiv.scrollTop);
+    }
+    
     window.location = path;
 }
 
@@ -546,18 +657,38 @@ function setListeners() {
     $(document).on('click', '.thumbDiv', function() {
         console.log("thumbDiv click: ", $(this));
         let type = $(this).data('type');
-        if (type === 'vid' || type === 'img') {
-            showPagers();
-            return false;
-        }
-        let targetSrc = $(this).data('src');
-        console.log("Target source: ", targetSrc);
+        let targetLink = $(this).data('link');
+        console.log("Target link: ", targetLink);
+        
         if (type === 'dir') {
-            openGallery(targetSrc);
+            openGallery(targetLink);
         } else if (type === 'file') {
-            openFile(targetSrc);
-        } else if (type === 'vid') {
-            $(this).attr('src', targetSrc);
+            openFile(targetLink);
+        } else if (type === 'vid' || type === 'img') {
+            console.log("Opening media item:", {
+                type,
+                targetLink,
+                element: this,
+                videoConfig: $(this).attr('data-video'),
+                src: $(this).attr('data-src')
+            });
+            
+            // For media items, ensure gallery is initialized and then show
+            if (!lg) {
+                console.log("Initializing gallery for media item");
+                initGallery();
+            }
+            // Find the index of this media item
+            const mediaElements = $('.media');
+            const index = mediaElements.index(this);
+            console.log("Media item index:", index);
+            if (index !== -1 && lg) {
+                console.log("Opening gallery at index:", index);
+                lg.openGallery(index);
+            } else {
+                console.error("Failed to open gallery:", { index, hasLg: !!lg });
+            }
+            showPagers();
         }
         return false;
     });

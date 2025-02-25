@@ -62,30 +62,33 @@ for dir_path in [THUMB_DIR, INFO_DIR, LOG_DIR, FAV_DIR]:
 # Setup logging
 logging.basicConfig(
     filename=LOG_DIR / 'gallery.log',
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(funcName)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 # Add console handler for debugging
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
 console_handler.setFormatter(console_formatter)
 logging.getLogger().addHandler(console_handler)
 
+# Disable Werkzeug logging
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
 def write_log(text, level="DEBUG"):
     """Write to log file"""
-    logging.log(
-        getattr(logging, level),
-        f"{text}"
-    )
+    if level in ["ERROR", "WARNING", "INFO", "CRITICAL"] or "Serving file:" in text:  # Only log errors and file serving
+        logging.log(
+            getattr(logging, level),
+            f"{text}"
+        )
 
 # Load config file
 def load_config() -> Dict:
     """Load configuration from config.json, create from example if not exists"""
     try:
-        write_log(f"Loading config from {CONFIG_FILE}")
         if not CONFIG_FILE.exists() and CONFIG_EXAMPLE.exists():
             write_log(f"Config file not found, copying from example")
             shutil.copy(CONFIG_EXAMPLE, CONFIG_FILE)
@@ -93,10 +96,7 @@ def load_config() -> Dict:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r') as f:
                 config = json.load(f)
-                write_log(f"Loaded config: {config}")
-                # Convert paths to proper Path objects for platform compatibility
                 config['root_dirs'] = [str(Path(p).absolute()) for p in config.get('root_dirs', [str(ROOT)])]
-                write_log(f"Normalized root_dirs: {config['root_dirs']}")
                 return config
         write_log("Using default config", "WARNING")
         return {"root_dirs": [str(ROOT)], "gallery_name": GALLERY_NAME}
@@ -116,14 +116,12 @@ def get_root_for_path(path: str) -> Path:
     """Find the root directory that contains the given path"""
     try:
         path = Path(path).absolute()
-        write_log(f"Finding root for path: {path}")
         
         # First check if this path starts with any root directory name
         path_parts = str(path).replace('\\', '/').split('/')
         for root in ROOT_DIRS:
             root_name = root.name
             if path_parts and path_parts[0] == root_name:
-                write_log(f"Found matching root by name: {root}")
                 return root
         
         # Then check if the path is under any root directory
@@ -131,7 +129,6 @@ def get_root_for_path(path: str) -> Path:
             try:
                 # Check if path is relative to this root
                 rel_path = path.relative_to(root)
-                write_log(f"Found root by path: {root} for path: {path}")
                 return root
             except ValueError:
                 continue
@@ -147,21 +144,18 @@ def pathify(path, decode=False):
     """Convert path to/from base64"""
     try:
         if decode:
-            write_log(f"Decoding path: {path}")
             try:
                 padding = 4 - (len(path) % 4)
                 if padding != 4:
                     path += "=" * padding
                 path = path.replace('-', '+').replace('_', '/')
                 decoded = base64.b64decode(path).decode('utf-8')
-                write_log(f"Decoded path: {decoded}")
                 return decoded
             except Exception as e:
                 write_log(f"Error decoding path: {e}", "ERROR")
                 write_log(traceback.format_exc(), "ERROR")
                 return ""
         else:
-            write_log(f"Encoding path: {path}")
             try:
                 # Find the appropriate root directory
                 path = Path(path)
@@ -172,23 +166,18 @@ def pathify(path, decode=False):
                 # Make sure path is relative to root
                 if path_str.startswith(root_str):
                     rel_path = path_str[len(root_str):].lstrip('\\/')
-                    write_log(f"Path relative to root: {rel_path}")
                     if not rel_path:  # If this is the root directory itself
                         rel_path = root.name
                     else:
                         # For subdirectories, include the root directory name
                         rel_path = f"{root.name}/{rel_path}"
-                    write_log(f"Final relative path: {rel_path}")
                     # Normalize path separators to forward slashes
                     rel_path = rel_path.replace('\\', '/')
                     encoded = base64.b64encode(rel_path.encode()).decode('utf-8').replace('+', '-').replace('/', '_').rstrip('=')
-                    write_log(f"Encoded path: {encoded}")
                     return encoded
                 else:
                     # If not under root, use the name only
-                    write_log(f"Path {path} is not under root {root}, using name only")
                     encoded = base64.b64encode(path.name.encode()).decode('utf-8').replace('+', '-').replace('/', '_').rstrip('=')
-                    write_log(f"Encoded name: {encoded}")
                     return encoded
             except Exception as e:
                 write_log(f"Error encoding path: {e}", "ERROR")
@@ -250,7 +239,6 @@ def filter_file(file_info):
 def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZE):
     """Create thumbnail for image or video"""
     try:
-        write_log(f"Creating thumbnail for {source_path} -> {thumb_path}")
         source_path = Path(source_path)
         thumb_path = Path(thumb_path)
         file_type = get_file_type(source_path)
@@ -260,7 +248,6 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
         if file_type == 'vid':
             # Get video duration
             cmd = [FFMPEG_PATH, '-i', str(source_path)]
-            write_log(f"Running ffmpeg command: {cmd}")
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             # Default to 7 seconds in
@@ -284,14 +271,11 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
                 '-vf', f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}',
                 str(thumb_path)
             ]
-            write_log(f"Running ffmpeg thumbnail command: {cmd}")
             subprocess.run(cmd, check=True)
             success = thumb_path.exists()
-            write_log(f"Thumbnail creation {'successful' if success else 'failed'}")
             return success
             
         elif file_type == 'img':
-            write_log(f"Creating image thumbnail using PIL")
             with Image.open(source_path) as img:
                 # Create square thumbnail
                 min_size = min(img.size)
@@ -300,7 +284,6 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
                 img = img.crop((offset_x, offset_y, offset_x + min_size, offset_y + min_size))
                 img = img.resize((width, height), Image.LANCZOS)
                 img.save(thumb_path, "PNG")
-                write_log(f"Image thumbnail created successfully")
                 return True
                 
         return False
@@ -311,7 +294,6 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
 
 def list_directory(path, thumb_only=False):
     """List contents of directory"""
-    write_log(f"Listing directory: {path} (thumb_only={thumb_only})")
     results = []
     thumbs_to_create = []
     
@@ -324,7 +306,6 @@ def list_directory(path, thumb_only=False):
             write_log(f"Path not found: {path}", "ERROR")
             return []
             
-        write_log(f"Reading directory: {dir_path}")
         for entry in dir_path.iterdir():
             name = entry.name
             
@@ -342,24 +323,18 @@ def list_directory(path, thumb_only=False):
                 'link': pathify(str(entry))
             }
             
-            write_log(f"Found item: {name} (type: {file_type})")
-            
             if not filter_file(item):
-                write_log(f"Filtering out item: {name}")
                 continue
                 
             # Handle thumbnails
             thumb = ""
             if file_type in ['img', 'vid']:
                 thumb = str(entry)
-                write_log(f"Using item as thumbnail source: {thumb}")
             elif file_type == 'dir':
                 # Recursively find first thumbnail-able item
-                write_log(f"Looking for thumbnail in directory: {entry}")
                 sub_items = list_directory(entry, thumb_only=True)
                 if sub_items:
                     thumb = sub_items[0]
-                    write_log(f"Found thumbnail in subdirectory: {thumb}")
             
             if thumb:
                 # Find the appropriate root for this path
@@ -368,35 +343,28 @@ def list_directory(path, thumb_only=False):
                     # Create relative path for thumbnail
                     rel_path = Path(thumb).relative_to(root_for_thumb)
                     thumb_path = THUMB_DIR / rel_path.with_suffix('.png')
-                    write_log(f"Thumbnail path: {thumb_path}")
                     
                     if not thumb_path.exists():
-                        write_log(f"Thumbnail doesn't exist, queuing for creation")
                         thumbs_to_create.append(thumb)
                     
                     # Use forward slashes for web paths and make relative to _data directory
                     item['thumb'] = f"./thumb?id={pathify(str(thumb))}"
-                    write_log(f"Thumbnail web path: {item['thumb']}")
                 except Exception as e:
                     write_log(f"Error creating thumbnail path for {thumb}: {e}", "ERROR")
                     write_log(traceback.format_exc(), "ERROR")
                 
                 if thumb_only:
-                    write_log(f"Returning thumbnail source: {thumb}")
                     return [thumb]
                     
             results.append(item)
             
         if thumb_only:
-            write_log("No thumbnail sources found")
             return []
             
         if thumbs_to_create:
-            write_log(f"Queuing {len(thumbs_to_create)} thumbnails for creation")
             queue_thumbnails(thumbs_to_create)
             
         sorted_results = sorted(results, key=lambda x: (x['type'] != 'dir', x['name'].lower()))
-        write_log(f"Returning {len(sorted_results)} items")
         return sorted_results
         
     except Exception as e:
@@ -640,17 +608,13 @@ def get_thumbnail():
         root_for_path = get_root_for_path(full_path)
         try:
             rel_path = Path(full_path).relative_to(root_for_path)
-            write_log(f"Path relative to root: {rel_path}")
             thumb_path = THUMB_DIR / rel_path.with_suffix('.png')
-            write_log(f"Thumbnail path: {thumb_path}")
             
             if not thumb_path.exists():
-                write_log(f"Creating thumbnail on demand")
                 if not create_thumbnail(full_path, thumb_path):
                     write_log("Failed to create thumbnail", "ERROR")
                     return "Failed to create thumbnail", 500
             
-            write_log(f"Serving thumbnail: {thumb_path}")
             return send_file(thumb_path, mimetype='image/png')
         except ValueError as e:
             write_log(f"Error creating relative path: {e}", "ERROR")
@@ -700,14 +664,12 @@ def serve_file():
     """Serve requested file"""
     try:
         path = request.args.get('id')
-        write_log(f"File route called with id: {path}")
         
         if not path:
             write_log("No path specified for file", "WARNING")
             return "No path specified", 400
             
         decoded_path = pathify(path, decode=True)
-        write_log(f"Decoded path: {decoded_path}")
         
         # Find the full path in one of the root directories
         full_path = None
@@ -721,10 +683,8 @@ def serve_file():
                 # Try the full path
                 test_path = root / decoded_path.lstrip('/')
                 
-            write_log(f"Checking path: {test_path}")
             if test_path.exists():
                 full_path = test_path
-                write_log(f"Found existing path: {full_path}")
                 break
                 
         if not full_path or not os.path.exists(full_path):
@@ -742,7 +702,6 @@ def serve_file():
 def build_thumbnails():
     """Process thumbnail queue"""
     try:
-        write_log("Processing thumbnail queue")
         queue_path = THUMB_DIR / 'queue'
         if not queue_path.exists():
             write_log("Queue directory not found", "WARNING")
@@ -752,7 +711,6 @@ def build_thumbnails():
         for queue_file in queue_path.glob("*.q"):
             thumb_id = queue_file.stem
             source_path = pathify(thumb_id, decode=True)
-            write_log(f"Processing queued thumbnail: {source_path}")
             
             # Find the full path in one of the root directories
             full_path = None
@@ -773,13 +731,11 @@ def build_thumbnails():
             thumb_path = THUMB_DIR / rel_path.with_suffix('.png')
             
             if create_thumbnail(full_path, thumb_path):
-                write_log(f"Thumbnail created successfully: {thumb_path}")
                 queue_file.unlink()
                 count += 1
             else:
                 write_log(f"Failed to create thumbnail: {thumb_path}", "ERROR")
             
-        write_log(f"Processed {count} thumbnails")
         return f"Processed {count} thumbnails"
     except Exception as e:
         write_log(f"Error building thumbnails: {e}", "ERROR")
