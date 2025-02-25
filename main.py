@@ -62,24 +62,25 @@ for dir_path in [THUMB_DIR, INFO_DIR, LOG_DIR, FAV_DIR]:
 # Setup logging
 logging.basicConfig(
     filename=LOG_DIR / 'gallery.log',
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s.%(msecs)03d - %(levelname)s - %(funcName)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 # Add console handler for debugging
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+#console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
 console_handler.setFormatter(console_formatter)
 logging.getLogger().addHandler(console_handler)
 
+
 # Disable Werkzeug logging
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
+#logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 def write_log(text, level="DEBUG"):
     """Write to log file"""
-    if level in ["ERROR", "WARNING", "INFO", "CRITICAL"] or "Serving file:" in text:  # Only log errors and file serving
+    if level in ["ERROR", "CRITICAL"]:  # Only log errors and critical issues
         logging.log(
             getattr(logging, level),
             f"{text}"
@@ -272,8 +273,7 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
                 str(thumb_path)
             ]
             subprocess.run(cmd, check=True)
-            success = thumb_path.exists()
-            return success
+            return thumb_path.exists()
             
         elif file_type == 'img':
             with Image.open(source_path) as img:
@@ -289,7 +289,6 @@ def create_thumbnail(source_path, thumb_path, width=THUMB_SIZE, height=THUMB_SIZ
         return False
     except Exception as e:
         write_log(f"Error creating thumbnail: {e}", "ERROR")
-        write_log(traceback.format_exc(), "ERROR")
         return False
 
 def list_directory(path, thumb_only=False):
@@ -351,7 +350,6 @@ def list_directory(path, thumb_only=False):
                     item['thumb'] = f"./thumb?id={pathify(str(thumb))}"
                 except Exception as e:
                     write_log(f"Error creating thumbnail path for {thumb}: {e}", "ERROR")
-                    write_log(traceback.format_exc(), "ERROR")
                 
                 if thumb_only:
                     return [thumb]
@@ -369,7 +367,6 @@ def list_directory(path, thumb_only=False):
         
     except Exception as e:
         write_log(f"Error listing directory: {e}", "ERROR")
-        write_log(traceback.format_exc(), "ERROR")
         return []
 
 def queue_thumbnails(thumbs):
@@ -562,14 +559,12 @@ def get_thumbnail():
     """Generate and serve thumbnail"""
     try:
         path = request.args.get('id')
-        write_log(f"Thumbnail route called with id: {path}")
         
         if not path:
             write_log("No path specified for thumbnail", "WARNING")
             return "No path specified", 400
             
         decoded_path = pathify(path, decode=True)
-        write_log(f"Decoded path: {decoded_path}")
         
         # Find the full path in one of the root directories
         full_path = None
@@ -583,25 +578,20 @@ def get_thumbnail():
                 # Try the full path
                 test_path = root / decoded_path.lstrip('/')
                 
-            write_log(f"Checking path: {test_path}")
             if test_path.exists():
                 full_path = test_path
-                write_log(f"Found existing path: {full_path}")
                 break
                 
         if not full_path:
-            write_log(f"Path not found in any root directory", "WARNING")
+            write_log(f"Source file not found for thumbnail: {decoded_path}", "WARNING")
             return "File not found", 404
         
         # Find first thumbnail-able item if directory
         if os.path.isdir(full_path):
-            write_log(f"Finding thumbnail for directory: {full_path}")
             items = list_directory(full_path, thumb_only=True)
             if items:
                 full_path = items[0]
-                write_log(f"Using item as thumbnail source: {full_path}")
             else:
-                write_log("No thumbnail source found in directory", "WARNING")
                 return "No thumbnail source found", 404
         
         # Create relative path for thumbnail
@@ -622,7 +612,6 @@ def get_thumbnail():
             
     except Exception as e:
         write_log(f"Error in thumbnail route: {e}", "ERROR")
-        write_log(traceback.format_exc(), "ERROR")
         return f"Error: {str(e)}", 500
 
 @app.route('/favorite')
@@ -691,11 +680,9 @@ def serve_file():
             write_log(f"File not found: {decoded_path}", "WARNING")
             return "File not found", 404
             
-        write_log(f"Serving file: {full_path}")
         return send_file(full_path)
     except Exception as e:
         write_log(f"Error serving file: {e}", "ERROR")
-        write_log(traceback.format_exc(), "ERROR")
         return f"Error: {str(e)}", 500
 
 @app.route('/build')

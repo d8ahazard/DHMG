@@ -1,6 +1,6 @@
 let dataArray = false;
 let fetchTimeout = false;
-let lg = false;
+let lg = null;
 let mediaArray = [];
 let phpSelf = '.';
 let protectedLinks = false;
@@ -15,6 +15,7 @@ let fadeTimeout;
 let isSlideshow = false;
 let isRandom = false;
 let navTimeout;
+let galleryElement = null;
 
 $(function () {
     $.fn.imgLoad = function (callback) {
@@ -97,9 +98,10 @@ function setupControls() {
 }
 
 function addElements(elements) {
+    console.time('add-elements-detail');
     let gc = document.getElementById("galleryContent");
-    console.log("Adding elements:", elements);
-    console.log("Favorites:", favorites);
+    console.log(`Adding ${elements.length} elements to gallery`);
+    
     $.each(elements, function (key, obj) {
         let isFav = ($.inArray(obj['link'], favorites) > -1);
         let typeIcon = '';
@@ -127,52 +129,28 @@ function addElements(elements) {
             // Decode base64 to get the actual filename
             let decodedLink = atob(obj['link']);
             let vidType = decodedLink.split('.').pop().toLowerCase();
-            console.log("Video initialization:", {
-                mediaPath,
-                vidType,
-                decodedLink,
-                fullPath: './file?id=' + encodeURIComponent(obj['link'])
-            });
             mDiv.classList.add("video");
             mDiv.classList.add("media");
             
-            // Create video configuration exactly as per lightGallery documentation
+            // Simplified video configuration for better performance
             const videoConfig = {
                 source: [{
                     src: './file?id=' + encodeURIComponent(obj['link']),
-                    type: `video/${vidType}`  // Now using the actual file extension
+                    type: `video/${vidType}`
                 }],
                 attributes: {
-                    preload: false,
+                    preload: 'none', // Critical for performance
                     playsinline: true,
-                    controls: true
+                    controls: true,
+                    autoplay: false
                 }
             };
             
             // Set data-video attribute with stringified config
-            console.log("Setting video config:", videoConfig);
             mDiv.setAttribute("data-video", JSON.stringify(videoConfig));
             
             // For videos, we don't set data-src as per documentation
             mDiv.removeAttribute("data-src");
-            
-            // Test video URL accessibility
-            fetch(mediaPath, { 
-                method: 'HEAD',
-                headers: {
-                    'Range': 'bytes=0-0'
-                }
-            })
-            .then(response => {
-                console.log(`Video URL check (${mediaPath}):`, {
-                    ok: response.ok,
-                    status: response.status,
-                    headers: Object.fromEntries(response.headers)
-                });
-            })
-            .catch(error => {
-                console.error(`Error checking video URL (${mediaPath}):`, error);
-            });
         }
 
         mDiv.setAttribute("data-name", name);
@@ -183,11 +161,14 @@ function addElements(elements) {
         if (isFav) mDiv.setAttribute("data-favorite", "true");
         if (type === "img") {
             mDiv.setAttribute("data-src", mediaPath);
+            // Add data-responsive attribute for responsive images
+            mDiv.setAttribute("data-responsive", mediaPath);
+            // CRITICAL FIX: Add sub-html attribute to prevent reloading
+            mDiv.setAttribute("data-sub-html", name);
         }
 
         let ri = document.createElement("img");
         ri.classList.add("responsive-image", "b-lazy");
-        ri.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==");
         ri.setAttribute("data-src", thumbPath);
         
         // Set type-specific fallback images
@@ -202,7 +183,6 @@ function addElements(elements) {
             fallbackImage = '/img/file.png';
         }
         ri.setAttribute("data-src-fallback", fallbackImage);
-        ri.setAttribute("loading", "lazy");
 
         let ai = document.createElement("div");
         ai.classList.add("aspect__inner");
@@ -246,23 +226,32 @@ function addElements(elements) {
         mDiv.appendChild(fad);
         gc.appendChild(mDiv);
     });
+    
+    console.timeEnd('add-elements-detail');
 }
 
 function buildGallery() {
+    console.time('build-gallery');
+    console.log('Building gallery from data');
+    
     let gc = $("#galleryContent");
-    console.log("Data array: ", dataArray);
     if (dataArray && dataArray.hasOwnProperty('items')) {
+        console.log(`Processing ${dataArray.items.length} items`);
         gc.addClass('fadeOut');
         gc.empty();
         mediaArray = dataArray['items'];
         favorites = dataArray['favorites'];
+        
+        console.time('add-elements');
         addElements(mediaArray);
+        console.timeEnd('add-elements');
     }
 
-    console.log("Showing");
     $('#loader').addClass('fadeOut');
     gc.removeClass('fadeOut');
-    console.log("Shuffle create.");
+    
+    console.time('shuffle-init');
+    console.log('Initializing Shuffle.js');
     shuffleInstance = new Shuffle(document.getElementById('galleryContent'), {
         itemSelector: '.thumbDiv',
         sizer: '.sizer',
@@ -272,133 +261,40 @@ function buildGallery() {
         },
         useTransform: false
     });
+    console.timeEnd('shuffle-init');
+    
+    console.time('sort-elements');
     sortElements();
-    new Blazy({
+    console.timeEnd('sort-elements');
+    
+    console.time('blazy-init');
+    console.log('Initializing Blazy for lazy loading');
+    window.bLazy = new Blazy({
         container: '#galleryContent',
+        success: function(ele){
+            if (ele.getAttribute('data-src')) {
+                ele.classList.add('loaded');
+            }
+        },
         error: function(ele, msg){
-            console.log("Primary image load failed, trying fallback:", ele.getAttribute('data-src-fallback'));
+            console.error('Blazy error:', msg);
             ele.src = ele.getAttribute('data-src-fallback');
             ele.classList.add('reloaded');
         }
     });
+    console.timeEnd('blazy-init');
 
+    console.time('set-listeners');
     setListeners();
+    console.timeEnd('set-listeners');
+    
+    console.time('sort-dom');
     sortDom();
+    console.timeEnd('sort-dom');
+    
+    console.timeEnd('build-gallery');
 }
 
-function initGallery() {
-    try {
-        if (lg) {
-            console.log("Destroying existing gallery instance");
-            lg.destroy();
-            lg = null;
-        }
-        
-        console.log("Initializing gallery...");
-        const $lgGalleryMethodsDemo = document.getElementById("galleryContent");
-        
-        if (!$lgGalleryMethodsDemo) {
-            console.warn('Gallery container not found');
-            return;
-        }
-
-        const mediaItems = mediaArray.filter(item => item.type === 'img' || item.type === 'vid');
-        console.log("Filtered media items:", mediaItems);
-        
-        if (mediaItems.length === 0) {
-            console.log('No media items to display');
-            return;
-        }
-
-        const speed = parseInt($('#slideshowSpeed').val() || 3) * 1000;
-        
-        // Log all video elements and their configurations
-        const videoElements = document.querySelectorAll('.video');
-        console.log("Video elements found:", videoElements.length);
-        videoElements.forEach((el, index) => {
-            console.log(`Video element ${index}:`, {
-                html: el.getAttribute('data-html'),
-                link: el.getAttribute('data-link')
-            });
-        });
-
-        const galleryConfig = {
-            plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
-            speed: 500,
-            selector: '.media',
-            preload: 2,
-            appendCounterTo: '.navbar',
-            hash: false,
-            thumbnail: false,
-            videoMaxWidth: "100%",
-            download: false,
-            counter: true,
-            autoplayControls: true,
-            autoplay: isSlideshow,
-            autoplayFirstVideo: false,
-            pauseOnHover: true,
-            slideDelay: speed,
-            progressBar: true,
-            mode: isRandom ? 'lg-slide-random' : 'lg-slide',
-            addClass: 'lg-custom-thumbnails',
-            mobileSettings: {
-                controls: true,
-                showCloseIcon: true,
-                download: false
-            },
-            video: true,
-            videojs: false,
-            onBeforeOpen: () => {
-                console.log("Gallery about to open");
-            },
-            onAfterOpen: () => {
-                console.log("Gallery opened");
-                const items = lg.galleryItems;
-                console.log("Gallery items:", items);
-            },
-            onSlideItemLoad: (detail) => {
-                const { index, isFirstSlide } = detail;
-                const item = lg.galleryItems[index];
-                console.log("Loading item:", {
-                    index,
-                    isFirstSlide,
-                    item,
-                    videoConfig: item.video
-                });
-            },
-            onBeforeSlide: (detail) => {
-                console.log("Before slide change:", detail);
-            },
-            onAfterSlide: (detail) => {
-                console.log("After slide change:", detail);
-                const { index } = detail;
-                const currentItem = lg.galleryItems[index];
-                console.log("Current slide item:", currentItem);
-                updateSlideshowButtonState();
-            }
-        };
-        
-        console.log("Initializing lightGallery with config:", galleryConfig);
-        lg = lightGallery($lgGalleryMethodsDemo, galleryConfig);
-
-        // Handle navigation fade
-        if (lg.$container) {
-            lg.$container.on('mousemove.lg touchstart.lg', showNavigation);
-            lg.$container.on('mouseout.lg touchend.lg', () => {
-                navTimeout = setTimeout(hideNavigation, 2000);
-            });
-        }
-        
-        console.log("Gallery initialized with config:", {
-            isSlideshow,
-            isRandom,
-            speed,
-            mediaItems: mediaItems.length
-        });
-    } catch (error) {
-        console.error('Error initializing lightGallery:', error.stack);
-    }
-}
 
 function updateSlideshowButtonState() {
     if (!lg || !lg.$container) return;
@@ -412,24 +308,8 @@ function updateSlideshowButtonState() {
     }
 }
 
-function showNavigation() {
-    if (navTimeout) {
-        clearTimeout(navTimeout);
-    }
-    const prev = document.querySelector('.lg-prev');
-    const next = document.querySelector('.lg-next');
-    if (prev) prev.style.opacity = '1';
-    if (next) next.style.opacity = '1';
-}
-
-function hideNavigation() {
-    const prev = document.querySelector('.lg-prev');
-    const next = document.querySelector('.lg-next');
-    if (prev) prev.style.opacity = '0';
-    if (next) next.style.opacity = '0';
-}
-
 function fetchGallery() {
+    console.time('fetch-gallery');
     let key = $('#pageKey').attr('content');
     let url = "./json";
     console.log("Page key:", key);
@@ -437,19 +317,29 @@ function fetchGallery() {
         url += "?id=" + encodeURIComponent(key);
     }
     console.log("Fetching gallery from:", url);
+    
     $.getJSON(url, function (data) {
+        console.timeEnd('fetch-gallery');
         console.log("JSON retrieved data!", data);
         dataArray = data;
         if (fetchTimeout) clearTimeout(fetchTimeout);
+        
+        console.time('build-gallery-after-fetch');
         buildGallery();
+        console.timeEnd('build-gallery-after-fetch');
+        
         if (shuffleInstance) {
+            console.time('shuffle-update');
+            console.log("Updating shuffle instance");
             shuffleInstance.update();
+            console.timeEnd('shuffle-update');
         }
     })
     .fail(function (jqXHR, textStatus, errorThrown) {
-        console.log("JSON Fetch failed:", textStatus, errorThrown);
-        console.log("Response:", jqXHR.responseText);
+        console.error("JSON Fetch failed:", textStatus, errorThrown);
+        console.error("Response:", jqXHR.responseText);
         fetchTimeout = setTimeout(function () {
+            console.log("Retrying gallery fetch...");
             fetchGallery();
         }, 5000);
     });
@@ -472,6 +362,258 @@ function getMedia() {
     });
     console.log("Elemedata: ", media);
     mediaArray = media;
+}
+
+// Add a function to patch the lightGallery core to prevent unnecessary reloading
+function patchLightGalleryCore(lgInstance) {
+    if (!lgInstance || !lgInstance.modules || !lgInstance.modules.core) {
+        console.warn('Cannot patch lightGallery core - instance not properly initialized');
+        return;
+    }
+    
+    console.log('Patching lightGallery core to prevent unnecessary reloading');
+    
+    // Keep track of loaded slides
+    lgInstance.loadedSlides = lgInstance.loadedSlides || {};
+    
+    // Override the loadContent method to prevent unnecessary reloading
+    const originalLoadContent = lgInstance.modules.core.loadContent;
+    lgInstance.modules.core.loadContent = function(index, rec, delay) {
+        console.time(`load-content-${index}`);
+        console.log(`Loading content for slide ${index}`);
+        
+        // Check if the slide is already loaded
+        if (lgInstance.loadedSlides[index]) {
+            console.log(`Slide ${index} already loaded, skipping reload`);
+            
+            // Just update the current index and trigger afterSlide event
+            if (lgInstance.index !== index) {
+                const prevIndex = lgInstance.index;
+                lgInstance.index = index;
+                
+                // Update UI without reloading content
+                lgInstance.updateCurrentCounter(index);
+                lgInstance.LGel.trigger('lgAfterSlide', {
+                    prevIndex: prevIndex,
+                    index: index,
+                    fromTouch: false,
+                    fromThumb: false
+                });
+            }
+            
+            console.timeEnd(`load-content-${index}`);
+            return;
+        }
+        
+        // Call the original method for unloaded slides
+        originalLoadContent.call(lgInstance.modules.core, index, rec, delay);
+        
+        // Mark the slide as loaded
+        lgInstance.loadedSlides[index] = true;
+        
+        console.timeEnd(`load-content-${index}`);
+    };
+    
+    // Override the goToNextSlide method for better performance
+    const originalGoToNextSlide = lgInstance.goToNextSlide;
+    lgInstance.goToNextSlide = function(fromTouch) {
+        console.time('go-to-next-slide');
+        console.log('Going to next slide');
+        
+        // Call the original method
+        originalGoToNextSlide.call(lgInstance, fromTouch);
+        
+        console.timeEnd('go-to-next-slide');
+    };
+    
+    // Override the goToPrevSlide method for better performance
+    const originalGoToPrevSlide = lgInstance.goToPrevSlide;
+    lgInstance.goToPrevSlide = function(fromTouch) {
+        console.time('go-to-prev-slide');
+        console.log('Going to previous slide');
+        
+        // Call the original method
+        originalGoToPrevSlide.call(lgInstance, fromTouch);
+        
+        console.timeEnd('go-to-prev-slide');
+    };
+    
+    console.log('lightGallery core patched successfully');
+}
+
+// Modify the initGallery function to use the patch
+function initGallery() {
+    try {
+        console.time('gallery-init-total');
+        console.log('Initializing gallery...');
+        
+        // Clean up any existing instance
+        if (lg) {
+            console.log('Destroying existing gallery instance');
+            console.time('gallery-destroy');
+            $('.lg-counter').remove();
+            lg.destroy();
+            lg = null;
+            console.timeEnd('gallery-destroy');
+        }
+        
+        galleryElement = document.getElementById("galleryContent");
+        if (!galleryElement) {
+            console.warn('Gallery element not found');
+            return;
+        }
+        
+        // Add event listeners for monitoring
+        galleryElement.addEventListener("lgInit", function(event) {
+            console.log('Gallery initialized event fired');
+            lg = event.detail.instance;
+            
+            // CRITICAL FIX: Patch the lightGallery core to prevent reloading
+            patchLightGalleryCore(lg);
+            
+            // Add navigation buttons if needed
+            const previousBtn = '<button type="button" aria-label="Previous slide" class="lg-prev"></button>';
+            const nextBtn = '<button type="button" aria-label="Next slide" class="lg-next"></button>';
+            const lgContainer = document.getElementById("galleryDiv");
+            
+            // Only add buttons if they don't exist
+            if (!document.querySelector(".lg-next")) {
+                console.log('Adding navigation buttons');
+                lgContainer.insertAdjacentHTML("beforeend", nextBtn);
+                lgContainer.insertAdjacentHTML("beforeend", previousBtn);
+                
+                document.querySelector(".lg-next").addEventListener("click", function() {
+                    console.time('next-slide');
+                    console.log('Next button clicked');
+                    lg.goToNextSlide();
+                    console.timeEnd('next-slide');
+                });
+                
+                document.querySelector(".lg-prev").addEventListener("click", function() {
+                    console.time('prev-slide');
+                    console.log('Previous button clicked');
+                    lg.goToPrevSlide();
+                    console.timeEnd('prev-slide');
+                });
+            }
+            
+            // Make navigation buttons visible
+            const prev = document.querySelector('.lg-prev');
+            const next = document.querySelector('.lg-next');
+            if (prev) prev.style.opacity = '1';
+            if (next) next.style.opacity = '1';
+            
+            showPagers();
+        });
+        
+        // Event listeners for performance monitoring
+        galleryElement.addEventListener("lgBeforeOpen", function() {
+            console.time('gallery-open');
+            console.log('Gallery before open event');
+        });
+        
+        galleryElement.addEventListener("lgAfterOpen", function() {
+            console.timeEnd('gallery-open');
+            console.log('Gallery after open event');
+            showPagers();
+        });
+        
+        galleryElement.addEventListener("lgBeforeSlide", function(event) {
+            const { index, prevIndex } = event.detail;
+            console.time(`slide-${prevIndex}-to-${index}`);
+            console.log(`Slide transition starting: ${prevIndex} -> ${index}`);
+        });
+        
+        galleryElement.addEventListener("lgAfterSlide", function(event) {
+            const { index, prevIndex } = event.detail;
+            console.timeEnd(`slide-${prevIndex}-to-${index}`);
+            console.log(`Slide transition complete: ${prevIndex} -> ${index}`);
+            showPagers();
+        });
+        
+        galleryElement.addEventListener("lgSlideItemLoad", function(event) {
+            const { index } = event.detail;
+            console.time(`slide-item-load-${index}`);
+            console.log(`Slide item ${index} loading started`);
+        });
+        
+        // Track when slide item load is complete
+        galleryElement.addEventListener("lgAfterSlide", function(event) {
+            const { index } = event.detail;
+            try {
+                console.timeEnd(`slide-item-load-${index}`);
+                console.log(`Slide item ${index} loading complete`);
+            } catch (e) {
+                // Timer might not exist, ignore
+            }
+        });
+        
+        // Use the original approach with selector instead of dynamic elements
+        const speed = parseInt($('#slideshowSpeed').val() || 3) * 1000;
+        console.log('Gallery speed setting:', speed);
+        
+        console.time('lightGallery-init');
+        console.log('Creating lightGallery with selector mode');
+        
+        // Count visible media items
+        const visibleItems = document.querySelectorAll('.thumbDiv.media.shuffle-item--visible');
+        console.log(`Initializing gallery with ${visibleItems.length} visible items`);
+        
+        // CRITICAL FIX: Optimize gallery configuration to prevent reloading
+        lg = lightGallery(galleryElement, {
+            plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
+            speed: 500,
+            selector: '.thumbDiv.media.shuffle-item--visible',
+            preload: 3, // Set to 0 to only load the current slide
+            download: false,
+            counter: true,
+            autoplayControls: true,
+            autoplay: isSlideshow,
+            progressBar: true,
+            mode: isRandom ? 'lg-slide-random' : 'lg-slide',
+            addClass: 'lg-custom-thumbnails',
+            mobileSettings: {
+                controls: true,
+                showCloseIcon: true,
+                download: false
+            },
+            hideControlOnEnd: false,
+            controls: true,
+            keyPress: true,
+            enableDrag: true,
+            enableSwipe: true,
+            swipeThreshold: 50,
+            videoMaxWidth: "100%",
+            appendCounterTo: '.navbar',
+            hash: false,
+            thumbnail: false,
+            // Critical performance optimizations
+            loadYouTubeThumbnail: false,
+            loadVimeoThumbnail: false,
+            thumbWidth: 100,
+            thumbHeight: 100,
+            thumbMargin: 5,
+            showThumbByDefault: false,
+            allowMediaOverlap: false,
+            getCaptionFromTitleOrAlt: false,
+            subHtmlSelectorRelative: false,
+            // Disable unnecessary features
+            mousewheel: false,
+            backdropDuration: 0,
+            startAnimationDuration: 0,
+            hideBarDelay: 2000,
+            loadYouTubeVideoOnOpen: false,
+            loadVimeoVideoOnOpen: false,
+            // CRITICAL FIX: Disable unnecessary callbacks
+            onBeforeNextSlide: false,
+            onBeforePrevSlide: false
+        });
+        
+        console.timeEnd('lightGallery-init');
+        console.timeEnd('gallery-init-total');
+    } catch (error) {
+        console.error('Error initializing lightGallery:', error);
+    }
 }
 
 function openFile(id) {
@@ -628,68 +770,72 @@ function setListeners() {
         showPagers();
     });
 
-    $(document).on('mouseenter', '.lg-next', function() {
-        pausePage=true;
+    $(document).on('mouseenter', '.lg-next, .lg-prev', function() {
+        pausePage = true;
+        this.style.opacity = '1';
+        if (fadeTimeout) clearTimeout(fadeTimeout);
     });
 
-    $(document).on('mouseenter', '.lg-prev', function() {
-        pausePage=true;
+    $(document).on('mouseleave', '.lg-next, .lg-prev', function() {
+        pausePage = false;
+        if (fadeTimeout) clearTimeout(fadeTimeout);
+        fadeTimeout = setTimeout(() => {
+            if (!pausePage) {
+                const prev = document.querySelector('.lg-prev');
+                const next = document.querySelector('.lg-next');
+                if (prev) prev.style.opacity = '0';
+                if (next) next.style.opacity = '0';
+            }
+        }, 3000);
     });
 
-    $(document).on('mouseleave', '.lg-next', function() {
-        pausePage=false;
-        showPagers();
-    });
-
-    $(document).on('mouseleave', '.lg-prev', function() {
-        pausePage=false;
-        showPagers();
-    });
-
-    $(document).on('mousemove', 'video', function() {
-        showPagers();
-    });
-
-    $(document).on('mousemove', '.lg-object.lg-image', function() {
-        showPagers();
-    });
-
-    $(document).on('click', '.thumbDiv', function() {
-        console.log("thumbDiv click: ", $(this));
+    // Optimize thumbnail click handler for better performance
+    $(document).on('click', '.thumbDiv', function(e) {
+        console.time('thumb-click-handler');
         let type = $(this).data('type');
         let targetLink = $(this).data('link');
-        console.log("Target link: ", targetLink);
         
         if (type === 'dir') {
             openGallery(targetLink);
         } else if (type === 'file') {
             openFile(targetLink);
         } else if (type === 'vid' || type === 'img') {
-            console.log("Opening media item:", {
-                type,
-                targetLink,
-                element: this,
-                videoConfig: $(this).attr('data-video'),
-                src: $(this).attr('data-src')
-            });
+            // Find the index directly without using Array.from
+            const visibleMedia = document.querySelectorAll('.media.shuffle-item--visible');
+            let index = -1;
             
-            // For media items, ensure gallery is initialized and then show
-            if (!lg) {
-                console.log("Initializing gallery for media item");
-                initGallery();
+            for (let i = 0; i < visibleMedia.length; i++) {
+                if (visibleMedia[i] === this) {
+                    index = i;
+                    break;
+                }
             }
-            // Find the index of this media item
-            const mediaElements = $('.media');
-            const index = mediaElements.index(this);
-            console.log("Media item index:", index);
-            if (index !== -1 && lg) {
-                console.log("Opening gallery at index:", index);
-                lg.openGallery(index);
-            } else {
-                console.error("Failed to open gallery:", { index, hasLg: !!lg });
+            
+            if (index !== -1) {
+                console.log(`Opening gallery at index ${index}`);
+                
+                // CRITICAL FIX: Use a more direct approach to open the gallery
+                // If gallery is not initialized, initialize it first
+                if (!lg) {
+                    console.log('Initializing gallery');
+                    initGallery();
+                    
+                    // Wait for gallery to initialize before opening
+                    const checkGalleryInitialized = setInterval(() => {
+                        if (lg) {
+                            clearInterval(checkGalleryInitialized);
+                            console.log(`Gallery initialized, opening at index ${index}`);
+                            lg.openGallery(index);
+                        }
+                    }, 50);
+                } else {
+                    // Gallery is already initialized, open directly
+                    console.log(`Gallery already initialized, opening at index ${index}`);
+                    lg.openGallery(index);
+                }
             }
-            showPagers();
         }
+        console.timeEnd('thumb-click-handler');
         return false;
     });
 
@@ -712,50 +858,90 @@ function setListeners() {
         }
         pageCookieClear('scrollPosition');
     }
+
+    // Navigation button handlers
+    $(document).on('mouseenter', '.lg-next, .lg-prev', function() {
+        this.style.opacity = '1';
+    });
+
+    $(document).on('mouseleave', '.lg-next, .lg-prev', function() {
+        if (!lg || !lg.$container) return;
+        const isFullscreen = document.fullscreenElement || 
+                           document.webkitFullscreenElement || 
+                           document.mozFullScreenElement;
+        if (!isFullscreen) {
+            this.style.opacity = '0';
+        }
+    });
 }
 
 function showPagers() {
-    console.log("Showpagers...")
-    if (fadeTimeout !== null) clearTimeout(fadeTimeout);
+    console.time('show-pagers');
+    
+    // Clear any existing timeouts to prevent multiple fades
+    if (fadeTimeout !== null) {
+        clearTimeout(fadeTimeout);
+        fadeTimeout = null;
+    }
+    
+    if (fadeInt !== null) {
+        clearInterval(fadeInt);
+        fadeInt = null;
+    }
+    
+    // Get navigation buttons
     let nb = document.querySelectorAll(".lg-next");
     let pb = document.querySelectorAll(".lg-prev");
-    let op = 1;  // initial opacity
-
-    for (let i= 0 ; i < nb.length; i++) {
-        nb[i].style.opacity = op;
-    }
-    for (let i= 0 ; i < pb.length; i++) {
-        pb[i].style.opacity = op;
-    }
-    if (pausePage) {
-        if (fadeTimeout !== null) clearTimeout(fadeTimeout);
-        if (fadeInt !== null) clearInterval(fadeInt);
+    
+    // If no buttons found, exit early
+    if (nb.length === 0 && pb.length === 0) {
+        console.timeEnd('show-pagers');
         return;
     }
-    fadeTimeout = setTimeout(function(){
-        console.log("Fading?")
-        fadeInt = setInterval(function () {
-            if (op <= 0.1){
-                for (let i= 0 ; i < nb.length; i++) {
+    
+    let op = 1;  // initial opacity
+
+    // Set initial opacity
+    for (let i = 0; i < nb.length; i++) {
+        nb[i].style.opacity = op;
+    }
+    for (let i = 0; i < pb.length; i++) {
+        pb[i].style.opacity = op;
+    }
+    
+    // If page is paused, keep buttons visible
+    if (pausePage) {
+        console.timeEnd('show-pagers');
+        return;
+    }
+    
+    // Set timeout to fade out buttons
+    fadeTimeout = setTimeout(function() {
+        fadeInt = setInterval(function() {
+            if (op <= 0.1) {
+                for (let i = 0; i < nb.length; i++) {
                     nb[i].style.opacity = "0";
                 }
-                for (let i= 0 ; i < pb.length; i++) {
+                for (let i = 0; i < pb.length; i++) {
                     pb[i].style.opacity = "0";
                 }
                 clearInterval(fadeInt);
                 fadeInt = null;
+                return;
             }
-            for (let i= 0 ; i < nb.length; i++) {
+            
+            op -= op * 0.1;
+            
+            for (let i = 0; i < nb.length; i++) {
                 nb[i].style.opacity = op;
             }
-            for (let i= 0 ; i < pb.length; i++) {
+            for (let i = 0; i < pb.length; i++) {
                 pb[i].style.opacity = op;
             }
-            op -= op * 0.1;
         }, 50);
-        clearTimeout(fadeTimeout);
-        fadeTimeout = null;
-    },3000);
+    }, 3000);
+    
+    console.timeEnd('show-pagers');
 }
 
 function setSort() {
@@ -789,11 +975,15 @@ function setSortIcons() {
 }
 
 function sortDom() {
+    console.time('sort-dom');
+    console.log('Sorting DOM elements');
+    
     let items = shuffleInstance.items;
     let sorted = items.sort(sortByPosition);
-    console.log("Sorted: ", sorted);
     let gc = $('#galleryContent');
     let last = false;
+    
+    console.log(`Reordering ${sorted.length} items in the DOM`);
     $.each(sorted, function (key, value) {
         let elem = $(value.element);
         if (key === 0) {
@@ -803,7 +993,33 @@ function sortDom() {
         }
         last = elem;
     });
-    initGallery();
+
+    // Update lazy loading after DOM changes
+    if (window.bLazy) {
+        console.time('blazy-revalidate');
+        console.log('Revalidating lazy loading');
+        window.bLazy.revalidate();
+        console.timeEnd('blazy-revalidate');
+    }
+    
+    // Only reinitialize gallery if it's already been initialized
+    // or if we're explicitly sorting (not just on initial load)
+    if (lg) {
+        console.log('Reinitializing gallery after sorting');
+        
+        // Destroy existing gallery before reinitializing
+        console.time('gallery-destroy');
+        lg.destroy();
+        lg = null;
+        console.timeEnd('gallery-destroy');
+        
+        // Delay initialization slightly to allow DOM to settle
+        setTimeout(() => {
+            initGallery();
+        }, 10);
+    }
+    
+    console.timeEnd('sort-dom');
 }
 
 function sortByPosition(a, b) {
@@ -880,4 +1096,30 @@ function toggleFavorite(el) {
     });
     sortElements();
     setSortIcons();
+}
+
+function openGalleryItem(index) {
+    console.time('open-gallery-item-total');
+    console.log(`Opening gallery item at index: ${index}`);
+    
+    // CRITICAL FIX: Use a more direct approach to open the gallery
+    if (!lg) {
+        console.log('Gallery not initialized, initializing now');
+        initGallery();
+        
+        // Wait for gallery to initialize before opening
+        const checkGalleryInitialized = setInterval(() => {
+            if (lg) {
+                clearInterval(checkGalleryInitialized);
+                console.log(`Gallery initialized, opening at index ${index}`);
+                lg.openGallery(index);
+                console.timeEnd('open-gallery-item-total');
+            }
+        }, 50);
+    } else {
+        // Gallery is already initialized, open directly
+        console.log(`Gallery already initialized, opening at index ${index}`);
+        lg.openGallery(index);
+        console.timeEnd('open-gallery-item-total');
+    }
 }
