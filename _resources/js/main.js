@@ -12,6 +12,9 @@ let trackTouch = false;
 let pausePage = false;
 let fadeInt;
 let fadeTimeout;
+let isSlideshow = false;
+let isRandom = false;
+let navTimeout;
 
 $(function () {
     $.fn.imgLoad = function (callback) {
@@ -30,14 +33,73 @@ $(function () {
     };
     protectedLinks = $('#protectKey').attr('content');
     setSort();
+    setInitialGridSize();
+    setupControls();
     fetchGallery();
 });
 
+function setInitialGridSize() {
+    const defaultSize = window.innerWidth <= 768 ? 150 : 200;
+    document.documentElement.style.setProperty('--grid-size', `${defaultSize}px`);
+}
+
+function setupControls() {
+    // Size slider control
+    $('.size-slider').on('input', function(e) {
+        document.documentElement.style.setProperty('--grid-size', `${e.target.value}px`);
+    });
+
+    // Slideshow controls
+    $('#slideshowBtn').on('click', function() {
+        isSlideshow = !isSlideshow;
+        const icon = $(this).find('i');
+        icon.toggleClass('fa-play fa-pause');
+        
+        try {
+            if (lg) {
+                lg.destroy();
+                lg = null;
+            }
+            initGallery();
+        } catch (error) {
+            console.error('Error toggling slideshow:', error);
+        }
+    });
+
+    $('#shuffleBtn').on('click', function() {
+        isRandom = !isRandom;
+        const icon = $(this).find('i');
+        icon.toggleClass('fa-random fa-long-arrow-alt-right');
+        
+        try {
+            if (lg) {
+                lg.destroy();
+                lg = null;
+            }
+            initGallery();
+        } catch (error) {
+            console.error('Error toggling shuffle:', error);
+        }
+    });
+
+    // Slideshow speed control
+    $('#slideshowSpeed').on('input', function() {
+        try {
+            if (lg) {
+                lg.destroy();
+                lg = null;
+            }
+            initGallery();
+        } catch (error) {
+            console.error('Error updating slideshow speed:', error);
+        }
+    });
+}
 
 function addElements(elements) {
     let gc = document.getElementById("galleryContent");
-    console.log("ELEMENTS: ", elements);
-    console.log("Favorites: ", favorites);
+    console.log("Adding elements:", elements);
+    console.log("Favorites:", favorites);
     $.each(elements, function (key, obj) {
         let isFav = ($.inArray(obj['link'], favorites) > -1);
         let typeIcon = '';
@@ -48,27 +110,26 @@ function addElements(elements) {
         if (type === 'img') typeIcon = 'image';
         if (type === 'file') typeIcon = 'file-code';
         if (type === 'vid' || type === 'img') {
-            mediaPath = $('#pagePath').attr('content') + "/" + obj['name'];
+            mediaPath = './file?id=' + encodeURIComponent(obj['link']);
         } else {
             mediaPath = obj['link'];
         }
 
-        if (type === 'vid') {
-            typeIcon = 'video';
-        }
-
         let thumbPath = obj['thumb'];
-        let thumbAlt = "./?thumb&id=" + obj['link'];
+        let thumbAlt = "./thumb?id=" + encodeURIComponent(obj['link']);
         let mDiv = document.createElement("div");
         mDiv.id = "media" + key;
         mDiv.classList.add("thumbDiv", "card", "bg-dark", "col-6", "col-md-4", "col-lg-3", "xol-xl-2");
         if (type === 'vid' || type === 'img') mDiv.classList.add("media");
+
         if (type === 'vid') {
+            typeIcon = 'video';
             let vidType = mediaPath.substr((mediaPath.lastIndexOf('.') + 1));
             mDiv.classList.add("video");
             mDiv.setAttribute("data-lg-size", "1920-1080");
             mDiv.setAttribute("data-video",'{"source": [{"src":"'+mediaPath+'", "type":"video/'+vidType+'"}], "attributes": {"preload": false, "playsinline": true, "controls": true}}');
         }
+
         mDiv.setAttribute("data-name", name);
         mDiv.setAttribute("data-type", type);
         mDiv.setAttribute("data-time", obj['time']);
@@ -83,8 +144,10 @@ function addElements(elements) {
 
         let ri = document.createElement("img");
         ri.classList.add("responsive-image", "b-lazy");
-        ri.setAttribute("data-alt", thumbAlt);
+        ri.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==");
         ri.setAttribute("data-src", thumbPath);
+        ri.setAttribute("data-src-fallback", thumbAlt);
+        ri.setAttribute("loading", "lazy");
 
         let ai = document.createElement("div");
         ai.classList.add("aspect__inner");
@@ -120,7 +183,6 @@ function addElements(elements) {
     });
 }
 
-
 function buildGallery() {
     let gc = $("#galleryContent");
     console.log("Data array: ", dataArray);
@@ -140,53 +202,144 @@ function buildGallery() {
         itemSelector: '.thumbDiv',
         sizer: '.sizer',
         isCentered: true,
-        by: 'data-title',
+        by: function(element) {
+            return element.getAttribute('data-name').toLowerCase();
+        },
         useTransform: false
     });
     sortElements();
     new Blazy({
         container: '#galleryContent',
         success: function(ele){
-            // Image has loaded
-            // Do your business here
+            // Image has loaded successfully
+            console.log("Image loaded successfully:", ele.getAttribute('data-src'));
         },
         error: function(ele, msg){
-                console.log("Building image for ", $(ele).attr('data-alt'));
-                $(ele).attr('src', $(ele).attr('data-alt'));
-                $(ele).addClass('reloaded');
-
+            console.log("Primary image load failed, trying fallback:", ele.getAttribute('data-src-fallback'));
+            ele.src = ele.getAttribute('data-src-fallback');
+            ele.classList.add('reloaded');
         }
     });
-
-    console.log("Sorting");
-    console.log("Sort done...");
 
     setListeners();
     sortDom();
 }
 
+function initGallery() {
+    try {
+        if (lg) {
+            try {
+                lg.destroy();
+            } catch (e) {
+                console.warn('Error destroying previous lightGallery instance:', e);
+            }
+            lg = null;
+        }
+        
+        console.log("Initializing gallery...");
+        const $lgGalleryMethodsDemo = document.getElementById("galleryContent");
+        
+        if (!$lgGalleryMethodsDemo) {
+            console.warn('Gallery container not found');
+            return;
+        }
+
+        const mediaItems = mediaArray.filter(item => item.type === 'img' || item.type === 'vid');
+        if (mediaItems.length === 0) {
+            console.log('No media items to display');
+            return;
+        }
+        
+        lg = lightGallery($lgGalleryMethodsDemo, {
+            plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
+            speed: 500,
+            selector: '.thumbDiv.media.shuffle-item--visible',
+            preload: 2,
+            appendCounterTo: '.navbar',
+            hash: false,
+            thumbnail: false,
+            videoMaxWidth: "100%",
+            download: false,
+            counter: true,
+            autoplayControls: true,
+            slideShowAutoplay: isSlideshow,
+            slideShowInterval: $('#slideshowSpeed').val() * 1000,
+            progressBar: true,
+            mode: isRandom ? 'lg-slide-random' : 'lg-slide',
+            addClass: 'lg-custom-thumbnails',
+            licenseKey: 'your-license-key',
+            mobileSettings: {
+                controls: true,
+                showCloseIcon: true,
+                download: false
+            }
+        });
+
+        // Handle navigation fade
+        if (lg.$container) {
+            lg.$container.on('mousemove.lg touchstart.lg', showNavigation);
+            lg.$container.on('mouseout.lg touchend.lg', () => {
+                navTimeout = setTimeout(hideNavigation, 2000);
+            });
+        }
+
+        // Update slideshow button state when autoplay changes
+        lg.$container.on('lgAfterSlide', function() {
+            const isPlaying = lg.$container.find('.lg-autoplay-button').hasClass('lg-icon-pause');
+            const icon = $('#slideshowBtn').find('i');
+            if (isPlaying) {
+                icon.removeClass('fa-play').addClass('fa-pause');
+            } else {
+                icon.removeClass('fa-pause').addClass('fa-play');
+            }
+        });
+    } catch (error) {
+        console.error('Error initializing lightGallery:', error);
+    }
+}
+
+function showNavigation() {
+    if (navTimeout) {
+        clearTimeout(navTimeout);
+    }
+    const prev = document.querySelector('.lg-prev');
+    const next = document.querySelector('.lg-next');
+    if (prev) prev.style.opacity = '1';
+    if (next) next.style.opacity = '1';
+}
+
+function hideNavigation() {
+    const prev = document.querySelector('.lg-prev');
+    const next = document.querySelector('.lg-next');
+    if (prev) prev.style.opacity = '0';
+    if (next) next.style.opacity = '0';
+}
 
 function fetchGallery() {
     let key = $('#pageKey').attr('content');
-    let url = "./index.php?json";
-    if (key !== "") {
-        url += "&id=" + key;
+    let url = "./json";
+    console.log("Page key:", key);
+    if (key && key !== "") {
+        url += "?id=" + encodeURIComponent(key);
     }
-    $.getJSON(url , function (data) {
+    console.log("Fetching gallery from:", url);
+    $.getJSON(url, function (data) {
         console.log("JSON retrieved data!", data);
         dataArray = data;
         if (fetchTimeout) clearTimeout(fetchTimeout);
         buildGallery();
-        shuffleInstance.update();
+        if (shuffleInstance) {
+            shuffleInstance.update();
+        }
     })
-        .fail(function () {
-            console.log("JSON Fetch failed, we're probably still building.");
-            fetchTimeout = setTimeout(function () {
-                fetchGallery();
-            }, 5000);
-        });
+    .fail(function (jqXHR, textStatus, errorThrown) {
+        console.log("JSON Fetch failed:", textStatus, errorThrown);
+        console.log("Response:", jqXHR.responseText);
+        fetchTimeout = setTimeout(function () {
+            fetchGallery();
+        }, 5000);
+    });
 }
-
 
 function getMedia() {
     let media = [];
@@ -207,74 +360,47 @@ function getMedia() {
     mediaArray = media;
 }
 
-
-function initGallery() {
-    if (lg) {
-        $('.lg-counter').remove();
-    }
-    console.log("Initializing gallery...");
-    setTimeout(function(){}, 500);
-    const $lgGalleryMethodsDemo = document.getElementById("galleryContent");
-    $lgGalleryMethodsDemo.addEventListener("lgInit", () => {
-        const previousBtn =
-            '<button type="button" aria-label="Previous slide" class="lg-prev"></button>';
-        const nextBtn =
-            '<button type="button" aria-label="Next slide" class="lg-next"></button>';
-        const $lgContainer = document.getElementById("galleryDiv");
-        $lgContainer.insertAdjacentHTML("beforeend", nextBtn);
-        $lgContainer.insertAdjacentHTML("beforeend", previousBtn);
-        document.querySelector(".lg-next").addEventListener("click", () => {
-            lg.goToNextSlide();
-        });
-        document.querySelector(".lg-prev").addEventListener("click", () => {
-            lg.goToPrevSlide();
-        });
-    });
-    lg = lightGallery($lgGalleryMethodsDemo, {
-        plugins: [lgVideo, lgZoom, lgFullscreen, lgAutoplay],
-        speed: 500,
-        selector: '.thumbDiv.media.shuffle-item--visible',
-        preload: 1,
-        appendCounterTo: '.navbar',
-        hash: false,
-        thumbnail: false,
-        videoMaxWidth: "100%"
-    });
-
-}
-
-
 function openFile(id) {
-    window.location = protectedLinks ? phpSelf + '?cmd=file&id=' + id : id;
+    window.location = protectedLinks ? './file?id=' + id : id;
 }
-
 
 function openGallery(id) {
-    let path = phpSelf + '?id=' + id;
+    console.log("Opening gallery with id:", id);
+    // Get the current path from the page
+    let currentPath = $('#pageKey').attr('content');
+    let newPath;
+    
+    if (currentPath && currentPath !== "") {
+        // We're in a subdirectory, so append the new directory to the current path
+        let decodedCurrent = decodeURIComponent(currentPath);
+        console.log("Current decoded path:", decodedCurrent);
+        newPath = id;  // Use the full path provided by the server
+    } else {
+        // We're at root, so just use the id directly
+        newPath = id;
+    }
+    
+    console.log("New path:", newPath);
+    let path = './?id=' + encodeURIComponent(newPath);
     let currentYOffset = $('#galleryDiv').scrollTop();
     pageCookieSet('scrollPosition', currentYOffset);
     window.location = path;
 }
-
 
 function pageCookieGet(key) {
     let temp = Cookies.get(key + "." + window.location);
     if (temp === "true") temp = true;
     if (temp === "false") temp = false;
     return temp;
-
 }
-
 
 function pageCookieSet(key, value) {
     Cookies.set(key + "." + window.location, value);
 }
 
-
 function pageCookieClear(key) {
     Cookies.remove(key + "." + window.location);
 }
-
 
 function sortGallery(type) {
     if (type === 'type') {
@@ -289,7 +415,6 @@ function sortGallery(type) {
     setSortIcons();
     sortElements();
 }
-
 
 function sortElements() {
     console.log("Sort fired!");
@@ -307,7 +432,6 @@ function sortElements() {
                 return 1;
             }
 
-
             if (favA && !favB) {
                 console.log("FAVA");
                 return -1;
@@ -324,9 +448,7 @@ function sortElements() {
     sortDom();
 }
 
-
 function setListeners() {
-
     $(document).bind('webkitfullscreenchange mozfullscreenchange fullscreenchange MSFullscreenChange', function() {
         let tb = $('.lg-toolbar');
         let to = $('.lg-thumb-outer');
@@ -348,7 +470,6 @@ function setListeners() {
             lp.show();
         }
     });
-
 
     $(document).on('click', '.favIcon', function (e) {
         toggleFavorite($(this));
@@ -414,7 +535,6 @@ function setListeners() {
         showPagers();
     });
 
-
     $(document).on('mousemove', 'video', function() {
         showPagers();
     });
@@ -442,7 +562,6 @@ function setListeners() {
         return false;
     });
 
-
     $("#divFilter").on('input', function () {
         let searchText = $(this).val();
         shuffleInstance.filter(function (element) {
@@ -456,12 +575,13 @@ function setListeners() {
     let sp = pageCookieGet('scrollPosition');
     if (sp !== undefined) {
         console.log("We have a jump position: " + sp);
-        document.getElementById('galleryDiv').scrollTop = sp;
+        const galleryDiv = document.getElementById('galleryDiv');
+        if (galleryDiv) {
+            galleryDiv.scrollTop = sp;
+        }
         pageCookieClear('scrollPosition');
     }
-
 }
-
 
 function showPagers() {
     console.log("Showpagers...")
@@ -507,7 +627,6 @@ function showPagers() {
     },3000);
 }
 
-
 function setSort() {
     let sortCheck = pageCookieGet('sortByName');
     let orderCheck = pageCookieGet('sortReverse');
@@ -521,7 +640,6 @@ function setSort() {
     }
     setSortIcons();
 }
-
 
 function setSortIcons() {
     let dirIcon = $('.dirIcon');
@@ -538,7 +656,6 @@ function setSortIcons() {
     selIcon.addClass(typeIcon);
     dirIcon.addClass('fa-sort-' + sortDir);
 }
-
 
 function sortDom() {
     let items = shuffleInstance.items;
@@ -557,7 +674,6 @@ function sortDom() {
     });
     initGallery();
 }
-
 
 function sortByPosition(a, b) {
     let aX = a.point.x;
@@ -581,7 +697,6 @@ function sortByPosition(a, b) {
     return 0;
 }
 
-
 function sortByValue(a, b) {
     let aVal;
     let bVal;
@@ -595,7 +710,6 @@ function sortByValue(a, b) {
     return sortReverse ? ((aVal > bVal) ? -1 : ((aVal < bVal) ? 1 : 0)) : ((aVal < bVal) ? -1 : ((aVal > bVal) ? 1 : 0));
 }
 
-
 function thumbDisplayName(name) {
     let dispName = name.substring(0, 20);
     if (name.length > 20) {
@@ -604,7 +718,6 @@ function thumbDisplayName(name) {
     dispName = dispName.replace("%20", "");
     return dispName;
 }
-
 
 function toggleFavorite(el) {
     let parent = el.closest('.thumbDiv');
@@ -624,11 +737,11 @@ function toggleFavorite(el) {
     child.toggleClass('fa');
     child.toggleClass('far');
 
-    let url = phpSelf + "?favorite&id=" + id;
+    let url = './favorite?id=' + id;
     if (isFav) url += "&delete";
     console.log("URL: " + url);
     $.getJSON(url, function (data) {
-        if (data[0] !== "error") {
+        if (data !== "error") {
             console.log("REBUILDING.");
         } else {
             console.error("Something bad happened...");
@@ -636,7 +749,4 @@ function toggleFavorite(el) {
     });
     sortElements();
     setSortIcons();
-
-    console.log("URL For el: " + url, el);
-
 }

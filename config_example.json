@@ -1,0 +1,8 @@
+{
+    "gallery_name": "Pocket Gallery",
+    "root_dirs": [
+        "/path/to/photos",
+        "/path/to/videos",
+        "/path/to/other/media"
+    ]
+} 
