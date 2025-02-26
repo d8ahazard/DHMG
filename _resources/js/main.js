@@ -169,7 +169,8 @@ function addElements(elements) {
     $.each(elements, function (key, obj) {
         let isFav = ($.inArray(obj['link'], favorites) > -1);
         let typeIcon = '';
-        let name = thumbDisplayName(obj['name']);
+        let fullName = obj['name'];  // Store full name
+        let name = thumbDisplayName(fullName);  // Shortened display name
         let type = obj['type'];
         let mediaPath;
         if (type === 'dir') typeIcon = 'folder';
@@ -188,6 +189,7 @@ function addElements(elements) {
         mDiv.classList.add("thumbDiv", "card", "bg-dark", "col-6", "col-md-4", "col-lg-3", "xol-xl-2");
         if (type === 'vid' || type === 'img') mDiv.classList.add("media");
         mDiv.setAttribute("data-type", type);
+        mDiv.setAttribute("title", fullName);  // Add full name as title
 
         if (type === 'vid') {
             typeIcon = 'video';
