@@ -80,11 +80,11 @@ logging.getLogger().addHandler(console_handler)
 
 def write_log(text, level="DEBUG"):
     """Write to log file"""
-    if level in ["ERROR", "CRITICAL"]:  # Only log errors and critical issues
-        logging.log(
+    logging.log(
             getattr(logging, level),
             f"{text}"
         )
+        
 
 # Load config file
 def load_config() -> Dict:

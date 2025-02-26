@@ -16,6 +16,13 @@ let isSlideshow = false;
 let isRandom = false;
 let navTimeout;
 let galleryElement = null;
+let controlsTimeout;
+let mouseTimeout;
+let lastMouseMove = Date.now();
+let isControlsVisible = true;
+let controlsFadeTimeout = null;
+let lastUserActivity = Date.now();
+var galleryIndexToOpen = null;
 
 $(function () {
     $.fn.imgLoad = function (callback) {
@@ -193,11 +200,17 @@ function addElements(elements) {
 
         if (type === 'vid') {
             typeIcon = 'video';
-            // Decode base64 to get the actual filename
-            let decodedLink = atob(obj['link']);
+            // Decode base64 to get the actual filename, using try-catch to avoid error if string is not properly encoded
+            let decodedLink;
+            try {
+                decodedLink = atob(obj['link']);
+            } catch (error) {
+                console.warn('Invalid base64 string for video, using original link', obj['link']);
+                decodedLink = obj['link'];
+            }
             let vidType = decodedLink.split('.').pop().toLowerCase();
-            mDiv.classList.add("video");
-            mDiv.classList.add("media");
+            mDiv.classList.add('video');
+            mDiv.classList.add('media');
             
             // Simplified video configuration for better performance
             const videoConfig = {
@@ -214,10 +227,10 @@ function addElements(elements) {
             };
             
             // Set data-video attribute with stringified config
-            mDiv.setAttribute("data-video", JSON.stringify(videoConfig));
+            mDiv.setAttribute('data-video', JSON.stringify(videoConfig));
             
             // For videos, we don't set data-src as per documentation
-            mDiv.removeAttribute("data-src");
+            mDiv.removeAttribute('data-src');
         }
 
         mDiv.setAttribute("data-name", name);
@@ -520,114 +533,18 @@ function patchLightGalleryCore(lgInstance) {
     console.log('lightGallery core patched successfully');
 }
 
-// Modify the initGallery function to use the patch
 function initGallery() {
     try {
-        console.time('gallery-init-total');
-        console.log('Initializing gallery...');
-        
         // Clean up any existing instance
         if (lg) {
-            console.log('Destroying existing gallery instance');
-            console.time('gallery-destroy');
-            $('.lg-counter').remove();
             lg.destroy();
             lg = null;
-            console.timeEnd('gallery-destroy');
         }
         
         galleryElement = document.getElementById("galleryContent");
-        if (!galleryElement) {
-            console.warn('Gallery element not found');
-            return;
-        }
-        
-        // Add event listeners for monitoring
-        galleryElement.addEventListener("lgInit", function(event) {
-            console.log('Gallery initialized event fired');
-            lg = event.detail.instance;
-            
-            // CRITICAL FIX: Patch the lightGallery core to prevent reloading
-            patchLightGalleryCore(lg);
-            
-            // Add navigation buttons if needed
-            const previousBtn = '<button type="button" aria-label="Previous slide" class="lg-prev"></button>';
-            const nextBtn = '<button type="button" aria-label="Next slide" class="lg-next"></button>';
-            const lgContainer = document.getElementById("galleryDiv");
-            
-            // Only add buttons if they don't exist
-            if (!document.querySelector(".lg-next")) {
-                console.log('Adding navigation buttons');
-                lgContainer.insertAdjacentHTML("beforeend", nextBtn);
-                lgContainer.insertAdjacentHTML("beforeend", previousBtn);
-                
-                document.querySelector(".lg-next").addEventListener("click", function() {
-                    console.time('next-slide');
-                    console.log('Next button clicked');
-                    lg.goToNextSlide();
-                    console.timeEnd('next-slide');
-                });
-                
-                document.querySelector(".lg-prev").addEventListener("click", function() {
-                    console.time('prev-slide');
-                    console.log('Previous button clicked');
-                    lg.goToPrevSlide();
-                    console.timeEnd('prev-slide');
-                });
-            }
-            
-            // Make navigation buttons visible
-            const prev = document.querySelector('.lg-prev');
-            const next = document.querySelector('.lg-next');
-            if (prev) prev.style.opacity = '1';
-            if (next) next.style.opacity = '1';
-            
-            showPagers();
-        });
-        
-        // Event listeners for performance monitoring
-        galleryElement.addEventListener("lgBeforeOpen", function() {
-            console.time('gallery-open');
-            console.log('Gallery before open event');
-        });
-        
-        galleryElement.addEventListener("lgAfterOpen", function() {
-            console.timeEnd('gallery-open');
-            console.log('Gallery after open event');
-            showPagers();
-        });
-        
-        galleryElement.addEventListener("lgBeforeSlide", function(event) {
-            const { index, prevIndex } = event.detail;
-            console.time(`slide-${prevIndex}-to-${index}`);
-            console.log(`Slide transition starting: ${prevIndex} -> ${index}`);
-        });
-        
-        galleryElement.addEventListener("lgAfterSlide", function(event) {
-            const { index, prevIndex } = event.detail;
-            console.timeEnd(`slide-${prevIndex}-to-${index}`);
-            console.log(`Slide transition complete: ${prevIndex} -> ${index}`);
-            showPagers();
-        });
-        
-        galleryElement.addEventListener("lgSlideItemLoad", function(event) {
-            const { index } = event.detail;
-            console.time(`slide-item-load-${index}`);
-            console.log(`Slide item ${index} loading started`);
-        });
-        
-        // Use the original approach with selector instead of dynamic elements
-        const speed = parseInt($('#slideshowSpeed').val() || 3) * 1000;
-        console.log('Gallery speed setting:', speed);
-        
-        console.time('lightGallery-init');
-        console.log('Creating lightGallery with selector mode');
-        
-        // Count visible media items
-        const visibleItems = document.querySelectorAll('.thumbDiv.media.shuffle-item--visible');
-        console.log(`Initializing gallery with ${visibleItems.length} visible items`);
-        
-        // CRITICAL FIX: Optimize gallery configuration to prevent reloading
+        if (!galleryElement) return;
+
+        // Initialize gallery with basic config, including onAfterOpen callback
         lg = lightGallery(galleryElement, {
             plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
             speed: 500,
@@ -679,11 +596,9 @@ function initGallery() {
             onBeforeNextSlide: false,
             onBeforePrevSlide: false
         });
-        
-        console.timeEnd('lightGallery-init');
-        console.timeEnd('gallery-init-total');
+
     } catch (error) {
-        console.error('Error initializing lightGallery:', error);
+        console.error('Error initializing gallery:', error);
     }
 }
 
@@ -803,63 +718,18 @@ function setListeners() {
     });
 
     $(document).on('touchstart','.lg-current', function() {
-        trackTouch = true;
+        // When touch starts on the current slide, show controls
+        showAndFadeControls();
     });
 
     $(document).on('touchend','.lg-current', function() {
-        if (trackTouch) {
-            console.log("TouchEnd!");
-            trackTouch = false;
-        }
+        // When touch ends on the current slide, show controls
+        showAndFadeControls();
     });
 
-    $(document).on('touchstart','video', function() {
-        trackTouch = true;
-    });
-
-    $(document).on('touchend','video', function() {
-        if (trackTouch) {
-            trackTouch = false;
-            showPagers();
-        }
-    });
-
-    $(document).on('touchstart','.lg-object.lg-image', function() {
-        trackTouch = true;
-    });
-
-    $(document).on('touchend','.lg-object.lg-image', function() {
-        if (trackTouch) {
-            trackTouch = false;
-            showPagers();
-        }
-    });
-
-    $(document).on('click', 'video', function() {
-        showPagers();
-    });
-
-    $(document).on('click', '.lg-object.lg-image', function() {
-        showPagers();
-    });
-
-    $(document).on('mouseenter', '.lg-next, .lg-prev', function() {
-        pausePage = true;
-        this.style.opacity = '1';
-        if (fadeTimeout) clearTimeout(fadeTimeout);
-    });
-
-    $(document).on('mouseleave', '.lg-next, .lg-prev', function() {
-        pausePage = false;
-        if (fadeTimeout) clearTimeout(fadeTimeout);
-        fadeTimeout = setTimeout(() => {
-            if (!pausePage) {
-                const prev = document.querySelector('.lg-prev');
-                const next = document.querySelector('.lg-next');
-                if (prev) prev.style.opacity = '0';
-                if (next) next.style.opacity = '0';
-            }
-        }, 3000);
+    $(document).on('click', 'video, .lg-object.lg-image', function() {
+        // Show controls when clicking on video or image
+        showAndFadeControls();
     });
 
     // Optimize thumbnail click handler for better performance
@@ -930,129 +800,6 @@ function setListeners() {
             galleryDiv.scrollTop = sp;
         }
         pageCookieClear('scrollPosition');
-    }
-
-    // Navigation button handlers
-    $(document).on('mouseenter', '.lg-next, .lg-prev', function() {
-        this.style.opacity = '1';
-    });
-
-    $(document).on('mouseleave', '.lg-next, .lg-prev', function() {
-        if (!lg || !lg.$container) return;
-        const isFullscreen = document.fullscreenElement || 
-                           document.webkitFullscreenElement || 
-                           document.mozFullScreenElement;
-        if (!isFullscreen) {
-            this.style.opacity = '0';
-        }
-    });
-}
-
-function showPagers() {
-    console.time('show-pagers');
-    
-    // Clear any existing timeouts to prevent multiple fades
-    if (fadeTimeout !== null) {
-        clearTimeout(fadeTimeout);
-        fadeTimeout = null;
-    }
-    
-    if (fadeInt !== null) {
-        clearInterval(fadeInt);
-        fadeInt = null;
-    }
-    
-    // Get navigation buttons
-    let nb = document.querySelectorAll(".lg-next");
-    let pb = document.querySelectorAll(".lg-prev");
-    
-    // If no buttons found, exit early
-    if (nb.length === 0 && pb.length === 0) {
-        console.timeEnd('show-pagers');
-        return;
-    }
-    
-    let op = 1;  // initial opacity
-
-    // Set initial opacity
-    for (let i = 0; i < nb.length; i++) {
-        nb[i].style.opacity = op;
-    }
-    for (let i = 0; i < pb.length; i++) {
-        pb[i].style.opacity = op;
-    }
-    
-    // If page is paused, keep buttons visible
-    if (pausePage) {
-        console.timeEnd('show-pagers');
-        return;
-    }
-    
-    // Set timeout to fade out buttons
-    fadeTimeout = setTimeout(function() {
-        fadeInt = setInterval(function() {
-            if (op <= 0.1) {
-                for (let i = 0; i < nb.length; i++) {
-                    nb[i].style.opacity = "0";
-                }
-                for (let i = 0; i < pb.length; i++) {
-                    pb[i].style.opacity = "0";
-                }
-                clearInterval(fadeInt);
-                fadeInt = null;
-                return;
-            }
-            
-            op -= op * 0.1;
-            
-            for (let i = 0; i < nb.length; i++) {
-                nb[i].style.opacity = op;
-            }
-            for (let i = 0; i < pb.length; i++) {
-                pb[i].style.opacity = op;
-            }
-        }, 50);
-    }, 3000);
-    
-    console.timeEnd('show-pagers');
-}
-
-function setSort() {
-    let sortCheck = pageCookieGet('sortByName');
-    let orderCheck = pageCookieGet('sortReverse');
-    if (sortCheck !== undefined) {
-        console.log("We have a sort by name cookie: " + sortCheck);
-        sortByName = sortCheck;
-    }
-    if (orderCheck !== undefined) {
-        console.log("We have an order cookie: " + orderCheck);
-        sortReverse = orderCheck;
-    }
-    setSortIcons();
-}
-
-function setSortIcons() {
-    const type = pageCookieGet("sortType") || 'name';
-    
-    // Reset all icons to base state
-    $('.sort-name-icon').removeClass('fa-sort-alpha-up fa-sort-alpha-down').addClass('fa-sort-alpha-down');
-    $('.sort-time-icon').removeClass('fa-sort-numeric-up fa-sort-numeric-down').addClass('fa-sort-numeric-down');
-    $('.sort-type-icon').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
-    
-    // Remove active state from all sort buttons
-    $('[onclick^="sortGallery"]').removeClass('active');
-    
-    // Add active state to current sort button
-    $(`[onclick="sortGallery('${type}')"]`).addClass('active');
-    
-    // Update active sort icon based on direction
-    const sortDir = sortReverse ? "up" : "down";
-    if (type === 'name') {
-        $('.sort-name-icon').removeClass('fa-sort-alpha-down fa-sort-alpha-up').addClass('fa-sort-alpha-' + sortDir);
-    } else if (type === 'time') {
-        $('.sort-time-icon').removeClass('fa-sort-numeric-down fa-sort-numeric-up').addClass('fa-sort-numeric-' + sortDir);
-    } else if (type === 'type') {
-        $('.sort-type-icon').removeClass('fa-sort').addClass('fa-sort-' + sortDir);
     }
 }
 
@@ -1190,24 +937,74 @@ function openGalleryItem(index) {
     console.time('open-gallery-item-total');
     console.log(`Opening gallery item at index: ${index}`);
     
-    // CRITICAL FIX: Use a more direct approach to open the gallery
+    // If gallery is not initialized, set the index to open and initialize the gallery
     if (!lg) {
         console.log('Gallery not initialized, initializing now');
+        galleryIndexToOpen = index;
         initGallery();
         
-        // Wait for gallery to initialize before opening
+        // Optional: Use a check interval if you want to monitor initialization
         const checkGalleryInitialized = setInterval(() => {
             if (lg) {
                 clearInterval(checkGalleryInitialized);
-                console.log(`Gallery initialized, opening at index ${index}`);
-                lg.openGallery(index);
+                // Do nothing here as onAfterOpen in initGallery will handle opening the gallery
                 console.timeEnd('open-gallery-item-total');
             }
         }, 50);
     } else {
-        // Gallery is already initialized, open directly
         console.log(`Gallery already initialized, opening at index ${index}`);
         lg.openGallery(index);
         console.timeEnd('open-gallery-item-total');
+    }
+}
+
+function showControls() {
+    if (!lg || !lg.$container) return;
+    $('.lg-toolbar, .lg-prev, .lg-next').css('opacity', '1');
+    isControlsVisible = true;
+}
+
+function hideControls() {
+    if (!lg || !lg.$container) return;
+    $('.lg-toolbar, .lg-prev, .lg-next').css('opacity', '0');
+    isControlsVisible = false;
+}
+
+function setSort() {
+    let sortCheck = pageCookieGet('sortByName');
+    let orderCheck = pageCookieGet('sortReverse');
+    if (sortCheck !== undefined) {
+        console.log("We have a sort by name cookie: " + sortCheck);
+        sortByName = sortCheck;
+    }
+    if (orderCheck !== undefined) {
+        console.log("We have an order cookie: " + orderCheck);
+        sortReverse = orderCheck;
+    }
+    setSortIcons();
+}
+
+function setSortIcons() {
+    const type = pageCookieGet("sortType") || 'name';
+    
+    // Reset all icons to base state
+    $('.sort-name-icon').removeClass('fa-sort-alpha-up fa-sort-alpha-down').addClass('fa-sort-alpha-down');
+    $('.sort-time-icon').removeClass('fa-sort-numeric-up fa-sort-numeric-down').addClass('fa-sort-numeric-down');
+    $('.sort-type-icon').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
+    
+    // Remove active state from all sort buttons
+    $('[onclick^="sortGallery"]').removeClass('active');
+    
+    // Add active state to current sort button
+    $(`[onclick="sortGallery('${type}')"]`).addClass('active');
+    
+    // Update active sort icon based on direction
+    const sortDir = sortReverse ? "up" : "down";
+    if (type === 'name') {
+        $('.sort-name-icon').removeClass('fa-sort-alpha-down fa-sort-alpha-up').addClass('fa-sort-alpha-' + sortDir);
+    } else if (type === 'time') {
+        $('.sort-time-icon').removeClass('fa-sort-numeric-down fa-sort-numeric-up').addClass('fa-sort-numeric-' + sortDir);
+    } else if (type === 'type') {
+        $('.sort-type-icon').removeClass('fa-sort').addClass('fa-sort-' + sortDir);
     }
 }
