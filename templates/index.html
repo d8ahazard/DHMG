@@ -197,11 +197,21 @@
             <div class="controls">
                 <div class="control-group">
                     <input type="text" id="searchBox" class="search-box" placeholder="Filter items...">
-                    <button class="button" onclick="toggleSortType()">
-                        <i class="fas fa-sort-alpha-down sort-type-icon"></i>
+                    <button class="button" onclick="sortGallery('name')" title="Sort by name">
+                        <i class="fas fa-sort-alpha-down sort-name-icon"></i>
+                        <span>Name</span>
                     </button>
-                    <button class="button" onclick="toggleSortDirection()">
-                        <i class="fas fa-sort-amount-down sort-dir-icon"></i>
+                    <button class="button" onclick="sortGallery('time')" title="Sort by date">
+                        <i class="fas fa-sort-numeric-down sort-time-icon"></i>
+                        <span>Date</span>
+                    </button>
+                    <button class="button" onclick="sortGallery('type')" title="Sort by type">
+                        <i class="fas fa-sort sort-type-icon"></i>
+                        <span>Type</span>
+                    </button>
+                    <button class="button" id="shuffleBtn" title="Randomize items">
+                        <i class="fas fa-random"></i>
+                        <span>Random</span>
                     </button>
                 </div>
                 <div class="control-group">
@@ -209,9 +219,6 @@
                     <div class="slideshow-controls">
                         <button class="button" id="slideshowBtn" title="Start/Stop Slideshow">
                             <i class="fas fa-play"></i>
-                        </button>
-                        <button class="button" id="shuffleBtn" title="Toggle Random/Sequential">
-                            <i class="fas fa-random"></i>
                         </button>
                         <input type="range" id="slideshowSpeed" min="2" max="10" value="5" title="Slideshow speed (seconds)">
                     </div>

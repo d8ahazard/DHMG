@@ -42,44 +42,108 @@ $(function () {
 function setInitialGridSize() {
     const defaultSize = window.innerWidth <= 768 ? 150 : 200;
     document.documentElement.style.setProperty('--grid-size', `${defaultSize}px`);
+    if (shuffleInstance) {
+        shuffleInstance.update();
+    }
 }
 
 function setupControls() {
     // Size slider control
     $('.size-slider').on('input', function(e) {
-        document.documentElement.style.setProperty('--grid-size', `${e.target.value}px`);
+        const newSize = e.target.value;
+        document.documentElement.style.setProperty('--grid-size', `${newSize}px`);
+        
+        // Update shuffle instance to re-layout items
+        if (shuffleInstance) {
+            shuffleInstance.update();
+        }
+        
+        // Force a re-layout of the grid
+        const galleryContent = document.getElementById('galleryContent');
+        if (galleryContent) {
+            galleryContent.style.display = 'none';
+            // Force a reflow
+            void galleryContent.offsetHeight;
+            galleryContent.style.display = 'grid';
+        }
     });
 
     // Slideshow controls
     $('#slideshowBtn').on('click', function() {
-        isSlideshow = !isSlideshow;
-        const icon = $(this).find('i');
-        icon.toggleClass('fa-play fa-pause');
-        
         try {
-            if (lg) {
-                lg.destroy();
-                lg = null;
+            if (lg && lg.modules && lg.modules.autoplay) {
+                // If lightGallery is initialized, start slideshow and open if needed
+                lg.settings.slideShowAutoplay = true;
+                lg.modules.autoplay.startSlideShow();
+                
+                if (!lg.$container.hasClass('lg-show-in')) {
+                    console.log('Opening gallery for slideshow');
+                    lg.openGallery(lg.index || 0);
+                }
+            } else {
+                // Initialize gallery with slideshow enabled and open it
+                isSlideshow = true;
+                console.log('Initializing gallery with slideshow');
+                initGallery();
+                
+                // Wait for gallery to initialize before opening
+                const checkGalleryInitialized = setInterval(() => {
+                    if (lg) {
+                        clearInterval(checkGalleryInitialized);
+                        console.log('Opening gallery after initialization');
+                        lg.openGallery(0);
+                    }
+                }, 50);
             }
-            initGallery();
         } catch (error) {
-            console.error('Error toggling slideshow:', error);
+            console.error('Error starting slideshow:', error);
+        }
+    });
+
+    // Add gallery close handler to stop slideshow
+    $(document).on('lgAfterClose', function() {
+        console.log('Gallery closed, stopping slideshow');
+        isSlideshow = false;
+        if (lg && lg.modules && lg.modules.autoplay) {
+            lg.settings.slideShowAutoplay = false;
+            lg.modules.autoplay.stopSlideShow();
         }
     });
 
     $('#shuffleBtn').on('click', function() {
-        isRandom = !isRandom;
-        const icon = $(this).find('i');
-        icon.toggleClass('fa-random fa-long-arrow-alt-right');
-        
         try {
-            if (lg) {
-                lg.destroy();
-                lg = null;
+            console.log('Shuffling items');
+            if (shuffleInstance) {
+                shuffleInstance.sort({
+                    by: function() {
+                        return Math.random() - 0.5; // Random sort function
+                    }
+                });
+                
+                // Force a re-sort of the DOM to match the new order
+                sortDom();
             }
-            initGallery();
         } catch (error) {
-            console.error('Error toggling shuffle:', error);
+            console.error('Error shuffling items:', error);
+        }
+    });
+
+    // Update gallery close handler to reset after shuffle
+    $(document).off('lgAfterClose').on('lgAfterClose', function() {
+        console.log('Gallery closed, stopping slideshow');
+        isSlideshow = false;
+        if (lg && lg.modules && lg.modules.autoplay) {
+            lg.settings.slideShowAutoplay = false;
+            lg.modules.autoplay.stopSlideShow();
+        }
+        
+        // Reset the shuffle order
+        if (shuffleInstance) {
+            console.log('Resetting shuffle order');
+            shuffleInstance.sort({ by: function(element) {
+                return element.getAttribute('data-name').toLowerCase();
+            }});
+            sortDom();
         }
     });
 
@@ -123,6 +187,7 @@ function addElements(elements) {
         mDiv.id = "media" + key;
         mDiv.classList.add("thumbDiv", "card", "bg-dark", "col-6", "col-md-4", "col-lg-3", "xol-xl-2");
         if (type === 'vid' || type === 'img') mDiv.classList.add("media");
+        mDiv.setAttribute("data-type", type);
 
         if (type === 'vid') {
             typeIcon = 'video';
@@ -154,16 +219,13 @@ function addElements(elements) {
         }
 
         mDiv.setAttribute("data-name", name);
-        mDiv.setAttribute("data-type", type);
         mDiv.setAttribute("data-time", obj['time']);
         mDiv.setAttribute("data-size", obj['size']);
         mDiv.setAttribute("data-link", obj['link']);
         if (isFav) mDiv.setAttribute("data-favorite", "true");
         if (type === "img") {
             mDiv.setAttribute("data-src", mediaPath);
-            // Add data-responsive attribute for responsive images
             mDiv.setAttribute("data-responsive", mediaPath);
-            // CRITICAL FIX: Add sub-html attribute to prevent reloading
             mDiv.setAttribute("data-sub-html", name);
         }
 
@@ -190,18 +252,26 @@ function addElements(elements) {
         let a = document.createElement("div");
         a.classList.add("aspect");
 
+        // Add default icon overlay
+        let overlay = document.createElement("div");
+        overlay.classList.add("default-icon-overlay");
+        let icon = document.createElement("i");
+        icon.classList.add("fas", `fa-${typeIcon}`);
+        overlay.appendChild(icon);
+
         // Add video overlay for video files
         if (type === 'vid') {
-            let overlay = document.createElement("div");
-            overlay.classList.add("video-overlay");
+            let videoOverlay = document.createElement("div");
+            videoOverlay.classList.add("video-overlay");
             let playIcon = document.createElement("img");
             playIcon.src = '/img/play_video.png';
-            overlay.appendChild(playIcon);
-            a.appendChild(overlay);
+            videoOverlay.appendChild(playIcon);
+            a.appendChild(videoOverlay);
         }
 
         ai.appendChild(ri);
         a.appendChild(ai);
+        a.appendChild(overlay);  // Add the default icon overlay
         mDiv.appendChild(a);
 
         let ttd = document.createElement("div");
@@ -209,9 +279,9 @@ function addElements(elements) {
         ttd.innerHTML = name;
         let tid = document.createElement("div");
         tid.classList.add("typeIcon", "decorator");
-        let icon = document.createElement("i");
-        icon.classList.add('fa', 'fa-' + typeIcon);
-        tid.appendChild(icon);
+        let typeIconSmall = document.createElement("i");
+        typeIconSmall.classList.add('fa', 'fa-' + typeIcon);
+        tid.appendChild(typeIconSmall);
         let fad = document.createElement("div");
         fad.classList.add("favIcon");
         let fa = document.createElement("i");
@@ -299,7 +369,14 @@ function buildGallery() {
 function updateSlideshowButtonState() {
     if (!lg || !lg.$container) return;
     
-    const isPlaying = lg.autoplay;
+    // Check slideshow status directly from the instance
+    let isPlaying = false;
+    
+    // Check if the autoplay plugin exists and slideshow is enabled
+    if (lg.modules && lg.modules.autoplay) {
+        isPlaying = lg.settings.slideShowAutoplay && lg.modules.autoplay.slideShowStatus;
+    }
+    
     const icon = $('#slideshowBtn').find('i');
     if (isPlaying) {
         icon.removeClass('fa-play').addClass('fa-pause');
@@ -537,17 +614,6 @@ function initGallery() {
             console.log(`Slide item ${index} loading started`);
         });
         
-        // Track when slide item load is complete
-        galleryElement.addEventListener("lgAfterSlide", function(event) {
-            const { index } = event.detail;
-            try {
-                console.timeEnd(`slide-item-load-${index}`);
-                console.log(`Slide item ${index} loading complete`);
-            } catch (e) {
-                // Timer might not exist, ignore
-            }
-        });
-        
         // Use the original approach with selector instead of dynamic elements
         const speed = parseInt($('#slideshowSpeed').val() || 3) * 1000;
         console.log('Gallery speed setting:', speed);
@@ -564,11 +630,12 @@ function initGallery() {
             plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
             speed: 500,
             selector: '.thumbDiv.media.shuffle-item--visible',
-            preload: 3, // Set to 0 to only load the current slide
+            preload: 2,
             download: false,
             counter: true,
-            autoplayControls: true,
-            autoplay: isSlideshow,
+            autoplayControls: false,
+            slideShowAutoplay: isSlideshow,
+            slideShowInterval: parseInt($('#slideshowSpeed').val() || 3) * 1000,
             progressBar: true,
             mode: isRandom ? 'lg-slide-random' : 'lg-slide',
             addClass: 'lg-custom-thumbnails',
@@ -587,24 +654,26 @@ function initGallery() {
             appendCounterTo: '.navbar',
             hash: false,
             thumbnail: false,
-            // Critical performance optimizations
+            allowMediaOverlap: false,
+            scaleImageToRatio: true,
+            actualSize: false,
+            width: '100vw',
+            height: '100vh',
+            addClass: 'lg-contain',
             loadYouTubeThumbnail: false,
             loadVimeoThumbnail: false,
             thumbWidth: 100,
             thumbHeight: 100,
             thumbMargin: 5,
             showThumbByDefault: false,
-            allowMediaOverlap: false,
             getCaptionFromTitleOrAlt: false,
             subHtmlSelectorRelative: false,
-            // Disable unnecessary features
             mousewheel: false,
             backdropDuration: 0,
             startAnimationDuration: 0,
             hideBarDelay: 2000,
             loadYouTubeVideoOnOpen: false,
             loadVimeoVideoOnOpen: false,
-            // CRITICAL FIX: Disable unnecessary callbacks
             onBeforeNextSlide: false,
             onBeforePrevSlide: false
         });
@@ -656,15 +725,17 @@ function pageCookieClear(key) {
 }
 
 function sortGallery(type) {
-    if (type === 'type') {
-        sortByName = !sortByName;
-        console.log("Changing sortyByName to " + sortByName);
-        pageCookieSet("sortByName", sortByName);
-    } else {
+    // If clicking the same sort type, just reverse the order
+    if (type === pageCookieGet('sortType')) {
         sortReverse = !sortReverse;
-        console.log("Changing reverse sort to " + sortReverse);
-        pageCookieSet("sortReverse", sortReverse);
+        console.log("Toggling sort direction for " + type);
+    } else {
+        // Switching to new sort type, start with ascending
+        sortReverse = false;
+        console.log("Changing sort type to " + type);
     }
+    pageCookieSet('sortType', type);
+    pageCookieSet('sortReverse', sortReverse);
     setSortIcons();
     sortElements();
 }
@@ -839,7 +910,7 @@ function setListeners() {
         return false;
     });
 
-    $("#divFilter").on('input', function () {
+    $("#searchBox").on('input', function () {
         let searchText = $(this).val();
         shuffleInstance.filter(function (element) {
             let name = element.getAttribute('data-name');
@@ -959,19 +1030,28 @@ function setSort() {
 }
 
 function setSortIcons() {
-    let dirIcon = $('.dirIcon');
-    let selIcon = $('.selIcon');
-    let sortDir = sortReverse ? "up" : "down";
-    let typeIcon;
-    if (sortByName) {
-        typeIcon = 'fa-sort-alpha-' + sortDir;
-    } else {
-        typeIcon = 'fa-sort-numeric-' + sortDir;
+    const type = pageCookieGet("sortType") || 'name';
+    
+    // Reset all icons to base state
+    $('.sort-name-icon').removeClass('fa-sort-alpha-up fa-sort-alpha-down').addClass('fa-sort-alpha-down');
+    $('.sort-time-icon').removeClass('fa-sort-numeric-up fa-sort-numeric-down').addClass('fa-sort-numeric-down');
+    $('.sort-type-icon').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
+    
+    // Remove active state from all sort buttons
+    $('[onclick^="sortGallery"]').removeClass('active');
+    
+    // Add active state to current sort button
+    $(`[onclick="sortGallery('${type}')"]`).addClass('active');
+    
+    // Update active sort icon based on direction
+    const sortDir = sortReverse ? "up" : "down";
+    if (type === 'name') {
+        $('.sort-name-icon').removeClass('fa-sort-alpha-down fa-sort-alpha-up').addClass('fa-sort-alpha-' + sortDir);
+    } else if (type === 'time') {
+        $('.sort-time-icon').removeClass('fa-sort-numeric-down fa-sort-numeric-up').addClass('fa-sort-numeric-' + sortDir);
+    } else if (type === 'type') {
+        $('.sort-type-icon').removeClass('fa-sort').addClass('fa-sort-' + sortDir);
     }
-    dirIcon.removeClass('fa-sort-down fa-sort-up');
-    selIcon.removeClass('fa-sort-alpha-up fa-sort-alpha-down fa-sort-numeric-up fa-sort-numeric-down');
-    selIcon.addClass(typeIcon);
-    dirIcon.addClass('fa-sort-' + sortDir);
 }
 
 function sortDom() {
@@ -1047,13 +1127,19 @@ function sortByPosition(a, b) {
 function sortByValue(a, b) {
     let aVal;
     let bVal;
-    if (sortByName) {
+    const type = pageCookieGet("sortType") || 'name';
+    
+    if (type === 'name') {
         aVal = a.element.getAttribute('data-name');
         bVal = b.element.getAttribute('data-name');
-    } else {
+    } else if (type === 'time') {
         aVal = a.element.getAttribute('data-time');
         bVal = b.element.getAttribute('data-time');
+    } else if (type === 'type') {
+        aVal = a.element.getAttribute('data-type');
+        bVal = b.element.getAttribute('data-type');
     }
+    
     return sortReverse ? ((aVal > bVal) ? -1 : ((aVal < bVal) ? 1 : 0)) : ((aVal < bVal) ? -1 : ((aVal > bVal) ? 1 : 0));
 }
 
