@@ -10,190 +10,22 @@
     <link rel="stylesheet" href="/css/lg-zoom.css">
     <link rel="stylesheet" href="/css/lg-video.css">
     <link rel="stylesheet" href="/css/main.css">
-    <style>
-        :root {
-            --grid-size: 200px;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f0f0f0;
-        }
-        
-        .header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: #f0f0f0;
-            padding: 10px 0;
-            margin: -20px -20px 20px -20px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .controls {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        
-        .control-group {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .search-box {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            min-width: 150px;
-        }
-        
-        .button {
-            padding: 8px 12px;
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .button:hover {
-            background: #f5f5f5;
-        }
-        
-        .size-slider {
-            width: 100px;
-        }
-        
-        .slideshow-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .breadcrumbs {
-            margin-bottom: 20px;
-            word-break: break-all;
-        }
-        
-        .breadcrumbs a {
-            color: #0066cc;
-            text-decoration: none;
-        }
-        
-        .gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(var(--grid-size), 1fr));
-            gap: 20px;
-        }
-        
-        .item {
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            cursor: pointer;
-            position: relative;
-        }
-        
-        .item img {
-            width: 100%;
-            aspect-ratio: 1;
-            object-fit: cover;
-            border-radius: 3px;
-        }
-        
-        .item-name {
-            margin-top: 10px;
-            word-break: break-all;
-            padding-right: 25px;
-            font-size: 0.9em;
-        }
-        
-        .favorite {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            cursor: pointer;
-            color: #999;
-            background: rgba(255,255,255,0.8);
-            padding: 5px;
-            border-radius: 50%;
-            z-index: 1;
-        }
-        
-        .favorite.active {
-            color: gold;
-        }
-        
-        .type-icon {
-            margin-right: 5px;
-        }
-        
-        /* Media viewer controls */
-        .lg-prev, .lg-next {
-            transition: opacity 0.3s ease;
-        }
-        
-        /* Mobile optimizations */
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-            }
-            
-            .header {
-                margin: -10px -10px 10px -10px;
-                padding: 10px;
-            }
-            
-            .header-content {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            h1 {
-                font-size: 1.5em;
-                margin: 0;
-            }
-            
-            .controls {
-                gap: 10px;
-            }
-            
-            .search-box {
-                width: 100%;
-                min-width: 0;
-            }
-            
-            .button {
-                padding: 6px 10px;
-                font-size: 0.9em;
-            }
-            
-            :root {
-                --grid-size: 150px;
-            }
-        }
-    </style>
 </head>
 <body>
     <div class="header">
         <div class="header-content">
-            <h1>{{ gallery_name }}</h1>
+            <div class="title-section">
+                <div class="breadcrumbs">
+                    {% for crumb in breadcrumbs %}
+                        {% if not loop.last %}
+                            <a href="./?id={{ crumb.link }}">{{ crumb.name }}</a> /
+                        {% else %}
+                            {{ crumb.name }}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                <h1>{{ gallery_name }}</h1>
+            </div>
             <div class="controls">
                 <div class="control-group">
                     <input type="text" id="searchBox" class="search-box" placeholder="Filter items...">
@@ -227,16 +59,6 @@
         </div>
     </div>
     
-    <div class="breadcrumbs">
-        {% for crumb in breadcrumbs %}
-            {% if not loop.last %}
-                <a href="./?id={{ crumb.link }}">{{ crumb.name }}</a> /
-            {% else %}
-                {{ crumb.name }}
-            {% endif %}
-        {% endfor %}
-    </div>
-
     <div class="gallery" id="galleryContent">
         <!-- Items will be loaded dynamically via JavaScript -->
     </div>
