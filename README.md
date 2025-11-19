@@ -1,53 +1,167 @@
 # DHMG
 ### Digitalhigh's Multimedia Gallery
 
-<img src="https://img.phlexchat.com/demo/test1.png">
+A modern, fast, and beautiful web-based media gallery built with Python (Flask) and JavaScript. Turn any directory structure into a responsive, feature-rich gallery with zero configuration required.
 
-<img src="https://img.phlexchat.com/demo/test2.png">
+## ✨ What Makes DHMG Special?
 
-<img src="https://img.phlexchat.com/demo/test3.png">
+**Modern UI/UX (2025)**
+- **Desktop Experience**: Clean three-section layout with logical control grouping
+  - Top header: Title, breadcrumb navigation, and search
+  - Secondary toolbar: Sort controls, view options, slideshow controls
+  - Smooth animations and professional visual hierarchy
+- **Mobile Experience**: Bottom navigation bar designed for thumb-friendly access
+  - Fixed bottom bar with Sort, Shuffle, View, and Slideshow buttons
+  - Slide-up menus for detailed controls
+  - Proper touch targets (48px+) throughout
+  - Optimized layouts for both portrait and landscape orientations
+- **Dark Theme**: Beautiful dark mode design with proper contrast and accessibility
 
-<img src="https://img.phlexchat.com/demo/test4.png">
+**Performance Optimized**
+- Lazy loading with Blazy.js for fast initial page loads
+- On-the-fly thumbnail generation with smart caching
+- Hardware-accelerated animations
+- Efficient grid layout system
+- Optimized video playback with volume persistence
 
-<img src="https://img.phlexchat.com/demo/test5.png">
+**Smart Media Handling**
+- Automatic format detection for images and videos (all HTML5-supported formats)
+- Video thumbnail generation via FFMPEG
+- Persistent video volume across playback
+- Slideshow mode with adjustable speed (2-10 seconds)
+- Fullscreen gallery viewer powered by LightGallery
+- Smooth navigation with keyboard, mouse, and touch support
 
-#### What is this?
+## 🚀 Key Features
 
-This is a small (4MB) PHP application that can turn any directory of media into a full-blown gallery. No work required (almost), just drop it into a folder structure with some media...and go!
+### Gallery Management
+- **Smart Search**: Real-time filtering with instant results
+- **Multiple Sort Options**: Sort by name, date, or type with ascending/descending order
+- **Shuffle Mode**: Randomize your gallery layout
+- **Favorites System**: Star items to pin them at the top
+- **Breadcrumb Navigation**: Easy directory traversal
+- **Scroll Position Memory**: Returns to your exact position when navigating back
 
-#### Why do you say (almost) no work required?
+### Media Viewing
+- **LightGallery Integration**: Professional full-screen media viewer
+- **Video Support**: HTML5 video playback with native controls
+- **Auto-hide Controls**: Clean viewing experience with controls that fade when inactive
+- **Slideshow Mode**: Automatic playback with customizable speed
+- **Zoom & Pan**: Full zoom support for detailed viewing
+- **Mobile Optimized**: Swipe gestures, optimized controls, auto-fullscreen
 
-Because you still need to have a working PHP webserver set up, and you will need to have FFMPEG installed for thumbnail generation from videos.
+### Security & Access
+- **PIN Protection**: Optional PIN-based access control
+- **Protected Links**: Secure media serving through backend
+- **Session Management**: Cookie-based state persistence
 
-#### Why would you even do such a thing?
+### Customization
+- **Adjustable Thumbnail Size**: Real-time slider control (100-400px)
+- **Responsive Grid**: Automatically adapts to screen size
+  - Desktop: 200-240px thumbnails
+  - Tablet: 160px thumbnails
+  - Mobile Portrait: 150-170px thumbnails
+  - Mobile Landscape: 100px thumbnails
+- **Theme Variables**: Easy color customization via CSS variables
 
-Because other PHP projects that try to be an AIO gallery didn't do all the things I wanted out of a personal media page...so I wrote one.
+### Developer Features
+- **Python/Flask Backend**: Clean, maintainable Python codebase
+- **Modern JavaScript**: jQuery, Shuffle.js, LightGallery, Blazy
+- **Modular Design**: Separated concerns between viewing, sorting, and media handling
+- **JSON API**: RESTful endpoints for gallery data
+- **Logging System**: Built-in logging for debugging
 
-#### So what makes this better?
+## 📋 Requirements
 
-Well, IDK about better...but here's some of the things it can do:
+- **Python 3.7+** with Flask
+- **FFMPEG** (for video thumbnail generation)
+- **PHP GD Library** (for image processing)
+- Modern web browser with JavaScript enabled
 
-1. On-the-fly generation of video/image thumbnails - meaning minimal load times, even on the first time loading a page.
-2. Smart caching. Directories are automatically updated and re-scanned when changes are detected. Just add new media and refresh.
-3. Custom file name/type filters. Choose to enable/disable files, videos, or images.
-4. Automatic detection of all video/image formats supported natively in HTML5.
-5. MOBILE FRIENDLY. Responsive UI, fullscreen controls, touch/zoom/pan support.
-6. Scroll position tracking - saves your place in the page when navigatin back/forth in the tree.
-7. Sort by date/name - Change media display order via the UI - sort orders are retained between reloads/navigation.
-8. FAVORITES - Click the star icon on the thumbnail to pin it at the top of the display order. Favorites are sorted independently of non-favorite media, but still based on UI selection.
-9. FILTERING - Filter media items by title.
-10. Modern - Uses bootstrap and jquery to provide a fast, intelligent, and beautiful way to view and share your media.
-11. File downloads - If a file isn't a supported media type, you can still download it, or let others download files. ;)
-12. Smart auto-play - Only auto play videos if already playing and cycling to the next media item.
-13. Sexy loading animations and stuff. Well, there's really just the one.
+## 🛠️ Setup
 
+1. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-### Notes, thoughts, etc...
+2. Install FFMPEG and ensure it's accessible from command line
 
-1. Check the top of index.php for some basic configuration options. You can set the gallery title, thumb size, and which files to show
-2. FFMPEG. Install it. Make sure you can access it from a command prompt.
-3. This needs the GD library in PHP, as well as CURL. I *think* that's it.
-4. I have hooks for audio...but no audio player (yet). IDK if I'll do this, as I don't have a need.
-5. Slide animations are a little janky yet. Need to work on that.
-6. I may add a flag to auto-play videos...IDK...I prefer to not have them start right away.
-7. I just wrote this for me, so please don't get mad if stuff goes wonky. This is not a full-time project, so I'm not likely to respond to issues, etc. Pull requests are always welcome.
+3. Configure your gallery (optional):
+   - Copy `config_example.json` to `config.json`
+   - Adjust settings as needed (gallery name, PIN protection, etc.)
+
+4. Run the application:
+```bash
+python main.py
+```
+
+5. Open your browser to `http://localhost:5000`
+
+## 🎨 Modern Features (2025 Update)
+
+### What's New
+- Complete UI/UX overhaul with mobile-first design
+- Bottom navigation for mobile devices
+- Three-section desktop layout for better organization
+- Smooth animations and transitions throughout
+- Improved accessibility with proper focus states
+- Dark theme with consistent styling
+- Better touch targets and mobile usability
+- Responsive breakpoints for all screen sizes
+- Enhanced lightgallery controls with better visibility
+- Modern modal designs with smooth animations
+
+### Mobile Excellence
+- **Bottom Navigation**: Thumb-friendly fixed bar with 4 main actions
+- **Slide-up Menus**: Beautiful overlays for detailed options
+- **Smart Defaults**: Automatic sizing based on device and orientation
+- **Touch Optimized**: All controls meet 48px minimum touch target guidelines
+- **No Horizontal Scroll**: Everything fits perfectly within viewport
+
+### Desktop Power
+- **Logical Sections**: Controls grouped by function (Sort | Gallery | Slideshow)
+- **Visual Hierarchy**: Primary and secondary button styles
+- **Keyboard Shortcuts**: Full keyboard navigation support
+- **Multi-monitor Ready**: Optimized for ultra-wide displays (up to 2400px)
+- **Hover States**: Smooth feedback on all interactive elements
+
+## 🎯 Usage Tips
+
+- **Search**: Type in the search bar to instantly filter items
+- **Sort**: Click sort buttons to change order (click again to reverse)
+- **Shuffle**: Randomize the gallery layout
+- **Slideshow**: Auto-play through your media with adjustable speed
+- **Favorites**: Click the star icon to pin important items
+- **Thumbnail Size**: Use the slider to adjust thumbnail size in real-time
+- **Mobile Menus**: Tap Sort or View buttons for additional options
+
+## 📱 Responsive Design
+
+DHMG automatically adapts to your device:
+- **Ultra-wide (1920px+)**: 240px thumbnails, 3+ columns
+- **Desktop (1025-1919px)**: 200px thumbnails, optimized layout
+- **Tablet (769-1024px)**: 160px thumbnails, compact controls
+- **Mobile Portrait**: 150-170px thumbnails, bottom navigation
+- **Mobile Landscape**: 100px thumbnails, maximized viewing area
+
+## 🔒 Security
+
+- Optional PIN protection for gallery access
+- Session-based authentication
+- Protected file serving
+- Secure media path encoding
+
+## 🙏 Credits
+
+Built with:
+- **LightGallery** - Media viewing
+- **Shuffle.js** - Grid sorting and filtering
+- **Blazy** - Lazy loading
+- **Flask** - Python web framework
+- **jQuery** - DOM manipulation
+- **Bootstrap** - Base UI components
+
+---
+
+**Note**: This is a personal project built for specific use cases. Use at your own risk. Pull requests welcome!
