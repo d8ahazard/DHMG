@@ -163,21 +163,37 @@ function verifyPin() {
 }
 
 function setInitialGridSize() {
-    // Set larger size for mobile portrait to ensure thumbnails and text are readable
+    // Set initial size based on device and orientation
     let defaultSize;
     if (window.innerWidth <= 768) {
-        // Check if portrait or landscape
+        // Mobile devices
         if (window.innerHeight > window.innerWidth) {
             // Portrait mode - larger thumbnails for better visibility
-            defaultSize = 180;
+            defaultSize = window.innerWidth <= 480 ? 150 : 170;
         } else {
             // Landscape mode - smaller thumbnails to fit more
-            defaultSize = 120;
+            defaultSize = 100;
         }
+    } else if (window.innerWidth <= 1024) {
+        // Tablet
+        defaultSize = 160;
+    } else if (window.innerWidth >= 1920) {
+        // Ultra-wide
+        defaultSize = 240;
+    } else if (window.innerWidth >= 1440) {
+        // Large desktop
+        defaultSize = 220;
     } else {
+        // Standard desktop
         defaultSize = 200;
     }
+    
     document.documentElement.style.setProperty('--grid-size', `${defaultSize}px`);
+    
+    // Update slider values to match
+    $('.size-slider').val(defaultSize);
+    $('#mobileSizeSlider').val(defaultSize);
+    
     if (shuffleInstance) {
         shuffleInstance.update();
     }
@@ -187,21 +203,27 @@ function setupControls() {
     // Size slider control
     $('.size-slider').on('input', function(e) {
         const newSize = e.target.value;
+        console.log('Changing thumbnail size to:', newSize);
+        
+        // Update CSS variable
         document.documentElement.style.setProperty('--grid-size', `${newSize}px`);
+        
+        // Update all thumbnails directly
+        $('.thumbDiv').css({
+            'width': newSize + 'px',
+            'height': newSize + 'px'
+        });
+        
+        // Update grid template
+        $('#galleryContent').css('grid-template-columns', `repeat(auto-fill, ${newSize}px)`);
         
         // Update shuffle instance to re-layout items
         if (shuffleInstance) {
             shuffleInstance.update();
         }
         
-        // Force a re-layout of the grid
-        const galleryContent = document.getElementById('galleryContent');
-        if (galleryContent) {
-            galleryContent.style.display = 'none';
-            // Force a reflow
-            void galleryContent.offsetHeight;
-            galleryContent.style.display = 'grid';
-        }
+        // Sync mobile slider
+        $('#mobileSizeSlider').val(newSize);
     });
 
     // Slideshow controls
@@ -384,7 +406,19 @@ function setupMobileNavigation() {
     // Sync mobile size slider with desktop
     $('#mobileSizeSlider').on('input', function(e) {
         const newSize = e.target.value;
+        console.log('Mobile: Changing thumbnail size to:', newSize);
+        
+        // Update CSS variable
         document.documentElement.style.setProperty('--grid-size', `${newSize}px`);
+        
+        // Update all thumbnails directly
+        $('.thumbDiv').css({
+            'width': newSize + 'px',
+            'height': newSize + 'px'
+        });
+        
+        // Update grid template
+        $('#galleryContent').css('grid-template-columns', `repeat(auto-fill, ${newSize}px)`);
         
         // Sync with desktop slider
         $('.size-slider').val(newSize);
@@ -404,10 +438,7 @@ function setupMobileNavigation() {
         $('#slideshowSpeed').val(speed).trigger('input');
     });
     
-    // Sync desktop sliders with mobile
-    $('.size-slider').on('input', function(e) {
-        $('#mobileSizeSlider').val(e.target.value);
-    });
+    // Desktop slider already handles mobile sync above, remove this duplicate
     
     $('#slideshowSpeed').on('input', function(e) {
         const speed = e.target.value;
