@@ -47,6 +47,7 @@ $(function () {
     setSort();
     setInitialGridSize();
     setupControls();
+    setupMobileNavigation();
     setupGalleryControls();
     fetchGallery();
     
@@ -269,6 +270,10 @@ function setupControls() {
             lg.settings.slideShowAutoplay = false;
             lg.modules.autoplay.stopSlideShow();
         }
+        // Update mobile icon
+        if (typeof updateMobileSlideshowIcon === 'function') {
+            updateMobileSlideshowIcon();
+        }
     });
 
     $('#shuffleBtn').on('click', function() {
@@ -315,6 +320,128 @@ function setupControls() {
     });
 }
 
+function setupMobileNavigation() {
+    console.log('Setting up mobile navigation');
+    
+    // Mobile Sort Button
+    $('#mobileSortBtn').on('click', function() {
+        console.log('Mobile sort button clicked');
+        $('#sortMenuOverlay').addClass('active');
+        $(this).addClass('active');
+    });
+    
+    // Mobile Shuffle Button
+    $('#mobileShuffleBtn').on('click', function() {
+        console.log('Mobile shuffle button clicked');
+        $('#shuffleBtn').trigger('click');
+        $(this).addClass('active');
+        setTimeout(() => $(this).removeClass('active'), 300);
+    });
+    
+    // Mobile View Button
+    $('#mobileViewBtn').on('click', function() {
+        console.log('Mobile view button clicked');
+        $('#viewMenuOverlay').addClass('active');
+        $(this).addClass('active');
+    });
+    
+    // Mobile Slideshow Button
+    $('#mobileSlideshowBtn').on('click', function() {
+        console.log('Mobile slideshow button clicked');
+        $('#slideshowBtn').trigger('click');
+        // Update icon based on slideshow state
+        updateMobileSlideshowIcon();
+    });
+    
+    // Close menu overlays
+    $('.close-menu').on('click', function() {
+        $(this).closest('.mobile-menu-overlay').removeClass('active');
+        $('.bottom-nav-item').removeClass('active');
+    });
+    
+    // Close on overlay click
+    $('.mobile-menu-overlay').on('click', function(e) {
+        if ($(e.target).hasClass('mobile-menu-overlay')) {
+            $(this).removeClass('active');
+            $('.bottom-nav-item').removeClass('active');
+        }
+    });
+    
+    // Mobile menu sort items
+    $('.mobile-menu-item[data-sort]').on('click', function() {
+        const sortType = $(this).data('sort');
+        console.log('Mobile sort selected:', sortType);
+        
+        // Update active state
+        $('.mobile-menu-item[data-sort]').removeClass('active');
+        $(this).addClass('active');
+        
+        // Close menu
+        $('#sortMenuOverlay').removeClass('active');
+        $('#mobileSortBtn').removeClass('active');
+    });
+    
+    // Sync mobile size slider with desktop
+    $('#mobileSizeSlider').on('input', function(e) {
+        const newSize = e.target.value;
+        document.documentElement.style.setProperty('--grid-size', `${newSize}px`);
+        
+        // Sync with desktop slider
+        $('.size-slider').val(newSize);
+        
+        // Update shuffle instance
+        if (shuffleInstance) {
+            shuffleInstance.update();
+        }
+    });
+    
+    // Sync mobile speed slider with desktop
+    $('#mobileSpeedSlider').on('input', function(e) {
+        const speed = e.target.value;
+        $('#mobileSpeedValue').text(speed);
+        
+        // Sync with desktop slider and update gallery
+        $('#slideshowSpeed').val(speed).trigger('input');
+    });
+    
+    // Sync desktop sliders with mobile
+    $('.size-slider').on('input', function(e) {
+        $('#mobileSizeSlider').val(e.target.value);
+    });
+    
+    $('#slideshowSpeed').on('input', function(e) {
+        const speed = e.target.value;
+        $('#speedValue').text(speed);
+        $('#mobileSpeedValue').text(speed);
+        $('#mobileSpeedSlider').val(speed);
+    });
+    
+    // Initialize speed display values
+    const initialSpeed = $('#slideshowSpeed').val() || 5;
+    $('#speedValue').text(initialSpeed);
+    $('#mobileSpeedValue').text(initialSpeed);
+    
+    console.log('Mobile navigation setup complete');
+}
+
+function updateMobileSlideshowIcon() {
+    const $mobileBtn = $('#mobileSlideshowBtn i');
+    const $desktopBtn = $('#slideshowBtn i');
+    
+    if ($desktopBtn.hasClass('fa-pause')) {
+        $mobileBtn.removeClass('fa-play').addClass('fa-pause');
+        $('#mobileSlideshowBtn').addClass('active');
+    } else {
+        $mobileBtn.removeClass('fa-pause').addClass('fa-play');
+        $('#mobileSlideshowBtn').removeClass('active');
+    }
+}
+
+function closeMobileMenu() {
+    $('.mobile-menu-overlay').removeClass('active');
+    $('.bottom-nav-item').removeClass('active');
+}
+
 function addElements(elements) {
     console.time('add-elements-detail');
     let gc = document.getElementById("galleryContent");
@@ -340,7 +467,7 @@ function addElements(elements) {
         let thumbAlt = "./thumb?id=" + encodeURIComponent(obj['link']);
         let mDiv = document.createElement("div");
         mDiv.id = "media" + key;
-        mDiv.classList.add("thumbDiv", "card", "bg-dark", "col-6", "col-md-4", "col-lg-3", "xol-xl-2");
+        mDiv.classList.add("thumbDiv", "card", "bg-dark");
         if (type === 'vid' || type === 'img') mDiv.classList.add("media");
         mDiv.setAttribute("data-type", type);
         mDiv.setAttribute("title", fullName);  // Add full name as title
@@ -1915,11 +2042,15 @@ function setSortIcons() {
     $('.sort-time-icon').removeClass('fa-sort-numeric-up fa-sort-numeric-down').addClass('fa-sort-numeric-down');
     $('.sort-type-icon').removeClass('fa-sort-up fa-sort-down').addClass('fa-sort');
     
-    // Remove active state from all sort buttons
+    // Remove active state from all sort buttons (desktop and mobile)
     $('[onclick^="sortGallery"]').removeClass('active');
+    $('.mobile-menu-item[data-sort]').removeClass('active');
+    $('.button-sort').removeClass('active');
     
     // Add active state to current sort button
     $(`[onclick="sortGallery('${type}')"]`).addClass('active');
+    $(`.button-sort[data-sort="${type}"]`).addClass('active');
+    $(`.mobile-menu-item[data-sort="${type}"]`).addClass('active');
     
     // Update active sort icon based on direction
     const sortDir = sortReverse ? "up" : "down";

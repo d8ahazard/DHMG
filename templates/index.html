@@ -12,51 +12,160 @@
     <link rel="stylesheet" href="/css/main.css">
 </head>
 <body>
-    <div class="header">
-        <div class="header-content">
-            <div class="title-section">
-                <div class="breadcrumbs">
+    <!-- Top Header - Always Visible -->
+    <header class="top-header">
+        <div class="top-header-content">
+            <!-- Left: Title & Breadcrumbs -->
+            <div class="header-left">
+                <h1 class="gallery-title">{{ gallery_name }}</h1>
+                <nav class="breadcrumbs">
                     {% for crumb in breadcrumbs %}
                         {% if not loop.last %}
-                            <a href="./?id={{ crumb.link }}">{{ crumb.name }}</a> /
+                            <a href="./?id={{ crumb.link }}">{{ crumb.name }}</a>
+                            <span class="breadcrumb-separator">/</span>
                         {% else %}
-                            {{ crumb.name }}
+                            <span class="breadcrumb-current">{{ crumb.name }}</span>
                         {% endif %}
                     {% endfor %}
-                </div>
-                <h1>{{ gallery_name }}</h1>
+                </nav>
             </div>
-            <div class="controls">
-                <div class="control-group">
-                    <input type="text" id="searchBox" class="search-box" placeholder="Filter items...">
-                    <button class="button" onclick="sortGallery('name')" title="Sort by name">
-                        <i class="fas fa-sort-alpha-down sort-name-icon"></i>
-                        <span>Name</span>
-                    </button>
-                    <button class="button" onclick="sortGallery('time')" title="Sort by date">
-                        <i class="fas fa-sort-numeric-down sort-time-icon"></i>
-                        <span>Date</span>
-                    </button>
-                    <button class="button" onclick="sortGallery('type')" title="Sort by type">
-                        <i class="fas fa-sort sort-type-icon"></i>
-                        <span>Type</span>
-                    </button>
-                    <button class="button" id="shuffleBtn" title="Randomize items">
-                        <i class="fas fa-random"></i>
-                        <span>Random</span>
-                    </button>
-                    <button class="button" id="downloadBtn" title="Download images from URL" style="display: none;">
-                        <i class="fas fa-download"></i>
-                        <span>Download</span>
-                    </button>
+            
+            <!-- Center: Search Bar -->
+            <div class="header-center">
+                <div class="search-container">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="searchBox" class="search-box" placeholder="Search or filter items..." aria-label="Search gallery">
                 </div>
-                <div class="control-group">
-                    <input type="range" class="size-slider" min="100" max="400" value="200" title="Adjust thumbnail size">
-                    <div class="slideshow-controls">
-                        <button class="button" id="slideshowBtn" title="Start/Stop Slideshow">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <input type="range" id="slideshowSpeed" min="2" max="10" value="5" title="Slideshow speed (seconds)">
+            </div>
+            
+            <!-- Right: View Controls -->
+            <div class="header-right">
+                <button class="button button-secondary" id="downloadBtn" title="Download images from URL" style="display: none;">
+                    <i class="fas fa-download"></i>
+                    <span>Download</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Secondary Bar - Desktop Controls -->
+    <div class="secondary-bar desktop-only">
+        <div class="secondary-bar-content">
+            <!-- Left: Sort Controls -->
+            <div class="control-section sort-section">
+                <span class="section-label">Sort:</span>
+                <button class="button button-sort" onclick="sortGallery('name')" title="Sort by name" data-sort="name">
+                    <i class="fas fa-sort-alpha-down sort-name-icon"></i>
+                    <span>Name</span>
+                </button>
+                <button class="button button-sort" onclick="sortGallery('time')" title="Sort by date" data-sort="time">
+                    <i class="fas fa-sort-numeric-down sort-time-icon"></i>
+                    <span>Date</span>
+                </button>
+                <button class="button button-sort" onclick="sortGallery('type')" title="Sort by type" data-sort="type">
+                    <i class="fas fa-sort sort-type-icon"></i>
+                    <span>Type</span>
+                </button>
+            </div>
+            
+            <!-- Center: Gallery Controls -->
+            <div class="control-section gallery-section">
+                <button class="button button-primary" id="shuffleBtn" title="Randomize items">
+                    <i class="fas fa-random"></i>
+                    <span>Shuffle</span>
+                </button>
+                <div class="size-control">
+                    <i class="fas fa-th size-icon"></i>
+                    <input type="range" class="size-slider" min="100" max="400" value="200" title="Adjust thumbnail size" aria-label="Thumbnail size">
+                    <i class="fas fa-th-large size-icon"></i>
+                </div>
+            </div>
+            
+            <!-- Right: Slideshow Controls -->
+            <div class="control-section slideshow-section">
+                <button class="button button-primary" id="slideshowBtn" title="Start/Stop Slideshow">
+                    <i class="fas fa-play"></i>
+                    <span>Slideshow</span>
+                </button>
+                <div class="speed-control">
+                    <i class="fas fa-tachometer-alt speed-icon"></i>
+                    <input type="range" id="slideshowSpeed" min="2" max="10" value="5" title="Slideshow speed (seconds)" aria-label="Slideshow speed">
+                    <span class="speed-label"><span id="speedValue">5</span>s</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="bottom-nav mobile-only">
+        <button class="bottom-nav-item" id="mobileSortBtn" title="Sort options">
+            <i class="fas fa-sort-amount-down"></i>
+            <span>Sort</span>
+        </button>
+        <button class="bottom-nav-item" id="mobileShuffleBtn" title="Shuffle gallery">
+            <i class="fas fa-random"></i>
+            <span>Shuffle</span>
+        </button>
+        <button class="bottom-nav-item" id="mobileViewBtn" title="View options">
+            <i class="fas fa-th"></i>
+            <span>View</span>
+        </button>
+        <button class="bottom-nav-item" id="mobileSlideshowBtn" title="Slideshow">
+            <i class="fas fa-play"></i>
+            <span>Slideshow</span>
+        </button>
+    </nav>
+
+    <!-- Mobile Sort Menu Overlay -->
+    <div class="mobile-menu-overlay" id="sortMenuOverlay">
+        <div class="mobile-menu">
+            <div class="mobile-menu-header">
+                <h3>Sort By</h3>
+                <button class="close-menu" aria-label="Close menu">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mobile-menu-content">
+                <button class="mobile-menu-item" onclick="sortGallery('name'); closeMobileMenu();" data-sort="name">
+                    <i class="fas fa-sort-alpha-down sort-name-icon"></i>
+                    <span>Sort by Name</span>
+                </button>
+                <button class="mobile-menu-item" onclick="sortGallery('time'); closeMobileMenu();" data-sort="time">
+                    <i class="fas fa-sort-numeric-down sort-time-icon"></i>
+                    <span>Sort by Date</span>
+                </button>
+                <button class="mobile-menu-item" onclick="sortGallery('type'); closeMobileMenu();" data-sort="type">
+                    <i class="fas fa-sort sort-type-icon"></i>
+                    <span>Sort by Type</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile View Menu Overlay -->
+    <div class="mobile-menu-overlay" id="viewMenuOverlay">
+        <div class="mobile-menu">
+            <div class="mobile-menu-header">
+                <h3>View Options</h3>
+                <button class="close-menu" aria-label="Close menu">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mobile-menu-content">
+                <div class="mobile-slider-control">
+                    <label for="mobileSizeSlider">Thumbnail Size</label>
+                    <div class="slider-wrapper">
+                        <i class="fas fa-th"></i>
+                        <input type="range" id="mobileSizeSlider" class="size-slider" min="100" max="400" value="200">
+                        <i class="fas fa-th-large"></i>
+                    </div>
+                </div>
+                <div class="mobile-slider-control">
+                    <label for="mobileSpeedSlider">Slideshow Speed</label>
+                    <div class="slider-wrapper">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <input type="range" id="mobileSpeedSlider" min="2" max="10" value="5">
+                        <span class="speed-display"><span id="mobileSpeedValue">5</span>s</span>
                     </div>
                 </div>
             </div>
