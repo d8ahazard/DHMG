@@ -45,6 +45,10 @@
                         <i class="fas fa-random"></i>
                         <span>Random</span>
                     </button>
+                    <button class="button" id="downloadBtn" title="Download images from URL" style="display: none;">
+                        <i class="fas fa-download"></i>
+                        <span>Download</span>
+                    </button>
                 </div>
                 <div class="control-group">
                     <input type="range" class="size-slider" min="100" max="400" value="200" title="Adjust thumbnail size">
@@ -59,8 +63,40 @@
         </div>
     </div>
     
+    <!-- Loading Indicator -->
+    <div id="loadingIndicator">
+        <div class="loading-spinner"></div>
+        <div>Loading gallery...</div>
+    </div>
+
     <div class="gallery" id="galleryContent">
         <!-- Items will be loaded dynamically via JavaScript -->
+    </div>
+
+    <div id="downloadModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Download Images</h2>
+            <div class="modal-body">
+                <input type="text" id="downloadUrl" placeholder="Enter URL to download images from..." style="width: 100%; padding: 8px; margin: 10px 0;">
+                <button id="startDownload" class="button">Start Download</button>
+                <div id="downloadStatus"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PIN Protection Modal -->
+    <div id="pinModal" class="modal" style="display: none;">
+        <div class="modal-content pin-modal-content">
+            <span class="close" onclick="closePinModal()">&times;</span>
+            <h2>Gallery Access</h2>
+            <div class="modal-body">
+                <p>Please enter your PIN to access the gallery:</p>
+                <input type="password" id="pinInput" placeholder="Enter PIN..." maxlength="10">
+                <button id="verifyPinBtn" class="button" style="width: 100%; padding: 12px; font-size: 16px;">Access Gallery</button>
+                <div id="pinStatus" style="margin-top: 10px; text-align: center;"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Script imports -->

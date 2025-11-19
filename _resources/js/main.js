@@ -39,15 +39,143 @@ $(function () {
             }
         });
     };
+
+    // PIN Protection - check on page load
+    checkPinProtection();
+
     protectedLinks = $('#protectKey').attr('content');
     setSort();
     setInitialGridSize();
     setupControls();
+    setupGalleryControls();
     fetchGallery();
+    
+    // Update grid size on orientation change
+    window.addEventListener('orientationchange', function() {
+        setTimeout(function() {
+            setInitialGridSize();
+            if (shuffleInstance) {
+                shuffleInstance.update();
+            }
+        }, 200);
+    });
+    
+    // Also update on window resize (for desktop or when keyboard appears on mobile)
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function() {
+            setInitialGridSize();
+            if (shuffleInstance) {
+                shuffleInstance.update();
+            }
+        }, 250);
+    });
 });
 
+// PIN Protection Functions
+function checkPinProtection() {
+    fetch('./check_pin_status')
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                throw new Error('Server error');
+            }
+        })
+        .then(data => {
+            if (data.pin_required) {
+                showPinModal();
+            }
+        })
+        .catch(error => {
+            console.error('Error checking PIN status:', error);
+            // If we can't check PIN status, show the modal anyway to be safe
+            showPinModal();
+        });
+}
+
+function showPinModal() {
+    const modal = $('#pinModal');
+    modal.show();
+
+    // Focus on PIN input
+    setTimeout(() => {
+        $('#pinInput').focus();
+    }, 100);
+
+    // Handle PIN input
+    $('#pinInput').off('keypress').on('keypress', function(e) {
+        if (e.which === 13) { // Enter key
+            verifyPin();
+        }
+    });
+
+    // Handle verify button
+    $('#verifyPinBtn').off('click').on('click', verifyPin);
+}
+
+function closePinModal() {
+    $('#pinModal').hide();
+    $('#pinInput').val('');
+    $('#pinStatus').html('');
+}
+
+function verifyPin() {
+    const pin = $('#pinInput').val().trim();
+    if (!pin) {
+        $('#pinStatus').html('<span style="color: red;">Please enter a PIN</span>');
+        return;
+    }
+
+    $('#pinStatus').html('<span style="color: var(--color-accent);">Verifying...</span>');
+    $('#verifyPinBtn').prop('disabled', true);
+
+    fetch('./verify_pin', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pin: pin })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.authorized) {
+            $('#pinStatus').html('<span style="color: green;">Access granted! Loading gallery...</span>');
+            setTimeout(() => {
+                closePinModal();
+                // Reload the gallery data instead of the full page
+                fetchGallery();
+            }, 1000);
+        } else {
+            $('#pinStatus').html('<span style="color: red;">Invalid PIN. Please try again.</span>');
+            $('#pinInput').val('').focus();
+        }
+    })
+    .catch(error => {
+        console.error('Error verifying PIN:', error);
+        $('#pinStatus').html('<span style="color: red;">Error verifying PIN. Please try again.</span>');
+    })
+    .finally(() => {
+        $('#verifyPinBtn').prop('disabled', false);
+    });
+}
+
 function setInitialGridSize() {
-    const defaultSize = window.innerWidth <= 768 ? 150 : 200;
+    // Set larger size for mobile portrait to ensure thumbnails and text are readable
+    let defaultSize;
+    if (window.innerWidth <= 768) {
+        // Check if portrait or landscape
+        if (window.innerHeight > window.innerWidth) {
+            // Portrait mode - larger thumbnails for better visibility
+            defaultSize = 180;
+        } else {
+            // Landscape mode - smaller thumbnails to fit more
+            defaultSize = 120;
+        }
+    } else {
+        defaultSize = 200;
+    }
     document.documentElement.style.setProperty('--grid-size', `${defaultSize}px`);
     if (shuffleInstance) {
         shuffleInstance.update();
@@ -78,19 +206,37 @@ function setupControls() {
     // Slideshow controls
     $('#slideshowBtn').on('click', function() {
         try {
+            console.log('Slideshow button clicked');
+            isSlideshow = !isSlideshow; // Toggle slideshow state
+            
             if (lg && lg.modules && lg.modules.autoplay) {
-                // If lightGallery is initialized, start slideshow and open if needed
-                lg.settings.slideShowAutoplay = true;
-                lg.modules.autoplay.startSlideShow();
-                
-                if (!lg.$container.hasClass('lg-show-in')) {
-                    console.log('Opening gallery for slideshow');
-                    lg.openGallery(lg.index || 0);
+                // If lightGallery is initialized
+                if (isSlideshow) {
+                    console.log('Starting slideshow');
+                    lg.settings.slideShowAutoplay = true;
+                    lg.modules.autoplay.startSlideShow();
+                    
+                    if (!lg.$container.hasClass('lg-show-in')) {
+                        console.log('Opening gallery for slideshow');
+                        lg.openGallery(lg.index || 0);
+                    }
+                    
+                    // Update button icon
+                    $('#slideshowBtn').find('i').removeClass('fa-play').addClass('fa-pause');
+                } else {
+                    console.log('Stopping slideshow');
+                    lg.settings.slideShowAutoplay = false;
+                    lg.modules.autoplay.stopSlideShow();
+                    
+                    // Update button icon
+                    $('#slideshowBtn').find('i').removeClass('fa-pause').addClass('fa-play');
                 }
             } else {
                 // Initialize gallery with slideshow enabled and open it
-                isSlideshow = true;
                 console.log('Initializing gallery with slideshow');
+                isSlideshow = true; // Ensure slideshow is enabled
+                $('#slideshowBtn').find('i').removeClass('fa-play').addClass('fa-pause');
+                
                 initGallery();
                 
                 // Wait for gallery to initialize before opening
@@ -99,11 +245,19 @@ function setupControls() {
                         clearInterval(checkGalleryInitialized);
                         console.log('Opening gallery after initialization');
                         lg.openGallery(0);
+                        
+                        // For mobile: enter fullscreen automatically for better experience
+                        if (window.innerWidth <= 768) {
+                            setTimeout(function() {
+                                console.log('Auto entering fullscreen on mobile');
+                                $('.lg-fullscreen').trigger('click');
+                            }, 500);
+                        }
                     }
                 }, 50);
             }
         } catch (error) {
-            console.error('Error starting slideshow:', error);
+            console.error('Error toggling slideshow:', error);
         }
     });
 
@@ -135,7 +289,7 @@ function setupControls() {
         }
     });
 
-    // Update gallery close handler to reset after shuffle
+    // Update gallery close handler - DO NOT auto-reset shuffle order
     $(document).off('lgAfterClose').on('lgAfterClose', function() {
         console.log('Gallery closed, stopping slideshow');
         isSlideshow = false;
@@ -144,14 +298,7 @@ function setupControls() {
             lg.modules.autoplay.stopSlideShow();
         }
         
-        // Reset the shuffle order
-        if (shuffleInstance) {
-            console.log('Resetting shuffle order');
-            shuffleInstance.sort({ by: function(element) {
-                return element.getAttribute('data-name').toLowerCase();
-            }});
-            sortDom();
-        }
+        // DO NOT reset shuffle order - let users keep their randomized layout
     });
 
     // Slideshow speed control
@@ -222,7 +369,7 @@ function addElements(elements) {
                     preload: 'none', // Critical for performance
                     playsinline: true,
                     controls: true,
-                    autoplay: false
+                    autoplay: true
                 }
             };
             
@@ -318,7 +465,7 @@ function addElements(elements) {
 function buildGallery() {
     console.time('build-gallery');
     console.log('Building gallery from data');
-    
+
     let gc = $("#galleryContent");
     if (dataArray && dataArray.hasOwnProperty('items')) {
         console.log(`Processing ${dataArray.items.length} items`);
@@ -326,7 +473,7 @@ function buildGallery() {
         gc.empty();
         mediaArray = dataArray['items'];
         favorites = dataArray['favorites'];
-        
+
         console.time('add-elements');
         addElements(mediaArray);
         console.timeEnd('add-elements');
@@ -334,7 +481,7 @@ function buildGallery() {
 
     $('#loader').addClass('fadeOut');
     gc.removeClass('fadeOut');
-    
+
     console.time('shuffle-init');
     console.log('Initializing Shuffle.js');
     shuffleInstance = new Shuffle(document.getElementById('galleryContent'), {
@@ -347,24 +494,30 @@ function buildGallery() {
         useTransform: false
     });
     console.timeEnd('shuffle-init');
-    
+
     console.time('sort-elements');
     sortElements();
     console.timeEnd('sort-elements');
-    
+
     console.time('blazy-init');
     console.log('Initializing Blazy for lazy loading');
     window.bLazy = new Blazy({
         container: '#galleryContent',
+        rootMargin: '50px', // Start loading images 50px before they come into view
+        threshold: 0.01, // Very small threshold for better performance
         success: function(ele){
             if (ele.getAttribute('data-src')) {
                 ele.classList.add('loaded');
+                console.log('Image loaded successfully:', ele.src);
             }
         },
         error: function(ele, msg){
-            console.error('Blazy error:', msg);
-            ele.src = ele.getAttribute('data-src-fallback');
-            ele.classList.add('reloaded');
+            console.error('Blazy error:', msg, 'for element:', ele);
+            if (ele.getAttribute('data-src-fallback')) {
+                ele.src = ele.getAttribute('data-src-fallback');
+                ele.classList.add('reloaded');
+                console.log('Applied fallback image for:', ele.getAttribute('data-src'));
+            }
         }
     });
     console.timeEnd('blazy-init');
@@ -372,12 +525,18 @@ function buildGallery() {
     console.time('set-listeners');
     setListeners();
     console.timeEnd('set-listeners');
-    
+
     console.time('sort-dom');
     sortDom();
     console.timeEnd('sort-dom');
-    
+
     console.timeEnd('build-gallery');
+
+    // Hide loading indicator after everything is built and displayed
+    setTimeout(() => {
+        $('#loadingIndicator').removeClass('show');
+        console.log('Loading indicator hidden after gallery build complete');
+    }, 100);
 }
 
 
@@ -400,8 +559,44 @@ function updateSlideshowButtonState() {
     }
 }
 
+function persistSlideshowState() {
+    // This function ensures the slideshow state is properly maintained
+    // across fullscreen toggles and other UI interactions
+    if (!lg || !lg.modules || !lg.modules.autoplay) return;
+    
+    console.log('Persisting slideshow state, current slideshow status:', isSlideshow);
+    
+    if (isSlideshow) {
+        // Make sure slideshow settings are applied
+        lg.settings.slideShowAutoplay = true;
+        
+        // Check if we need to restart the slideshow
+        if (!lg.modules.autoplay.slideShowStatus) {
+            console.log('Restarting stopped slideshow');
+            lg.modules.autoplay.startSlideShow();
+        }
+        
+        // Update button state
+        $('#slideshowBtn').find('i').removeClass('fa-play').addClass('fa-pause');
+    } else {
+        // Make sure slideshow is stopped if it shouldn't be running
+        if (lg.modules.autoplay.slideShowStatus) {
+            console.log('Stopping slideshow that should be stopped');
+            lg.settings.slideShowAutoplay = false;
+            lg.modules.autoplay.stopSlideShow();
+        }
+        
+        // Update button state
+        $('#slideshowBtn').find('i').removeClass('fa-pause').addClass('fa-play');
+    }
+}
+
 function fetchGallery() {
     console.time('fetch-gallery');
+
+    // Show loading indicator
+    $('#loadingIndicator').addClass('show');
+
     let key = $('#pageKey').attr('content');
     let url = "./json";
     console.log("Page key:", key);
@@ -409,27 +604,42 @@ function fetchGallery() {
         url += "?id=" + encodeURIComponent(key);
     }
     console.log("Fetching gallery from:", url);
-    
+
     $.getJSON(url, function (data) {
         console.timeEnd('fetch-gallery');
         console.log("JSON retrieved data!", data);
         dataArray = data;
         if (fetchTimeout) clearTimeout(fetchTimeout);
-        
+
         console.time('build-gallery-after-fetch');
         buildGallery();
         console.timeEnd('build-gallery-after-fetch');
-        
+
         if (shuffleInstance) {
             console.time('shuffle-update');
             console.log("Updating shuffle instance");
             shuffleInstance.update();
             console.timeEnd('shuffle-update');
         }
+
+        // Hide loading indicator after gallery is built
+        $('#loadingIndicator').removeClass('show');
     })
     .fail(function (jqXHR, textStatus, errorThrown) {
         console.error("JSON Fetch failed:", textStatus, errorThrown);
         console.error("Response:", jqXHR.responseText);
+
+        // Check if it's an authentication error
+        if (jqXHR.status === 401) {
+            console.log("Authentication required, showing PIN modal");
+            $('#loadingIndicator').removeClass('show');
+            showPinModal();
+            return;
+        }
+
+        // Hide loading indicator on other errors too
+        $('#loadingIndicator').removeClass('show');
+
         fetchTimeout = setTimeout(function () {
             console.log("Retrying gallery fetch...");
             fetchGallery();
@@ -533,6 +743,150 @@ function patchLightGalleryCore(lgInstance) {
     console.log('lightGallery core patched successfully');
 }
 
+function setupGalleryControls() {
+    // Remove any existing handlers first
+    $(window).off('click.gallery-controls');
+    
+    // Set up the global click handler
+    $(window).on('click.gallery-controls', function(e) {
+        // Only proceed if we have a gallery open
+        const $container = $('.lg-container');
+        if (!$container.length) return;
+        
+        const $target = $(e.target);
+        
+        // Don't handle clicks on controls or video elements
+        if ($target.closest('.lg-toolbar, .lg-prev, .lg-next, .lg-video-play-button, .lg-video-cont video').length) {
+            return;
+        }
+        
+        // Handle clicks on gallery content
+        if ($target.closest('.lg-object, .lg-container, .lg-item').length) {
+            console.log('Gallery content clicked, toggling controls');
+            const isVisible = $container.hasClass('lg-show-controls');
+            console.log('Controls currently visible:', isVisible);
+            
+            if (isVisible) {
+                $container.removeClass('lg-show-controls');
+            } else {
+                $container.addClass('lg-show-controls');
+            }
+            
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+}
+
+function isMobileDevice() {
+    return (window.innerWidth <= 768) ||
+           (navigator.userAgent.match(/Android/i) ||
+            navigator.userAgent.match(/webOS/i) ||
+            navigator.userAgent.match(/iPhone/i) ||
+            navigator.userAgent.match(/iPad/i) ||
+            navigator.userAgent.match(/iPod/i) ||
+            navigator.userAgent.match(/BlackBerry/i) ||
+            navigator.userAgent.match(/Windows Phone/i));
+}
+
+// Add mobile close button for better mobile UX
+function addMobileCloseButton() {
+    if (!isMobileDevice()) return;
+
+    // Remove existing button if present
+    removeMobileCloseButton();
+
+    // Create the close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'lg-mobile-close-btn';
+    closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    closeBtn.title = 'Close Gallery';
+    closeBtn.setAttribute('aria-label', 'Close Gallery');
+
+    // Add click handler
+    closeBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (lg) {
+            lg.closeGallery();
+        }
+    });
+
+    // Add to gallery container
+    const galleryContainer = document.querySelector('.lg-container');
+    if (galleryContainer) {
+        galleryContainer.appendChild(closeBtn);
+
+        // Show button after a short delay
+        setTimeout(() => {
+            closeBtn.classList.add('show');
+        }, 500);
+
+        // Set up auto-hide/show based on user activity
+        setupMobileCloseButtonVisibility(closeBtn, galleryContainer);
+    }
+}
+
+// Remove mobile close button
+function removeMobileCloseButton() {
+    const existingBtn = document.querySelector('.lg-mobile-close-btn');
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+}
+
+// Set up mobile close button visibility based on user activity
+function setupMobileCloseButtonVisibility(closeBtn, galleryContainer) {
+    let hideTimeout;
+    let isUserActive = false;
+
+    function showCloseButton() {
+        if (!galleryContainer.classList.contains('lg-show-controls')) {
+            closeBtn.classList.add('show');
+        }
+        isUserActive = true;
+
+        // Hide after 3 seconds of inactivity
+        clearTimeout(hideTimeout);
+        hideTimeout = setTimeout(() => {
+            if (!galleryContainer.classList.contains('lg-show-controls')) {
+                closeBtn.classList.remove('show');
+            }
+            isUserActive = false;
+        }, 3000);
+    }
+
+    function hideCloseButton() {
+        if (!galleryContainer.classList.contains('lg-show-controls')) {
+            closeBtn.classList.remove('show');
+        }
+        isUserActive = false;
+    }
+
+    // Show button on various user interactions
+    const events = ['touchstart', 'touchmove', 'click', 'mousemove', 'keydown'];
+
+    events.forEach(event => {
+        galleryContainer.addEventListener(event, showCloseButton, { passive: true });
+    });
+
+    // Hide button when controls are shown (to avoid overlap)
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                if (galleryContainer.classList.contains('lg-show-controls')) {
+                    closeBtn.classList.remove('show');
+                } else if (isUserActive) {
+                    closeBtn.classList.add('show');
+                }
+            }
+        });
+    });
+
+    observer.observe(galleryContainer, { attributes: true, attributeFilter: ['class'] });
+}
+
 function initGallery() {
     try {
         // Clean up any existing instance
@@ -543,32 +897,41 @@ function initGallery() {
         
         galleryElement = document.getElementById("galleryContent");
         if (!galleryElement) return;
+        
+        // Determine if on mobile
+        const isMobile = isMobileDevice();
+        console.log('Initializing gallery, mobile device detected:', isMobile);
 
-        // Initialize gallery with basic config, including onAfterOpen callback
+        // Initialize gallery with performance-optimized config
         lg = lightGallery(galleryElement, {
             plugins: [lgZoom, lgVideo, lgFullscreen, lgAutoplay],
-            speed: 500,
+            speed: isMobile ? 300 : 500, // Faster transitions on mobile
             selector: '.thumbDiv.media.shuffle-item--visible',
-            preload: 2,
+            preload: isMobile ? 1 : 2, // Reduce preload on mobile for performance
             download: false,
             counter: true,
-            autoplayControls: false,
+            autoplayControls: true,
             slideShowAutoplay: isSlideshow,
             slideShowInterval: parseInt($('#slideshowSpeed').val() || 3) * 1000,
             progressBar: true,
             mode: isRandom ? 'lg-slide-random' : 'lg-slide',
-            addClass: 'lg-custom-thumbnails',
+            addClass: 'lg-custom-thumbnails' + (isMobile ? ' lg-mobile' : ''),
             mobileSettings: {
                 controls: true,
                 showCloseIcon: true,
-                download: false
+                download: false,
+                autoplayControls: true,
+                // Performance optimizations for mobile
+                speed: 300,
+                preload: 1,
+                hideControlOnEnd: false
             },
             hideControlOnEnd: false,
             controls: true,
             keyPress: true,
-            enableDrag: true,
+            enableDrag: !isMobile, // Disable drag on mobile for better touch performance
             enableSwipe: true,
-            swipeThreshold: 50,
+            swipeThreshold: isMobile ? 30 : 50, // Lower threshold on mobile for better responsiveness
             videoMaxWidth: "100%",
             appendCounterTo: '.navbar',
             hash: false,
@@ -590,12 +953,528 @@ function initGallery() {
             mousewheel: false,
             backdropDuration: 0,
             startAnimationDuration: 0,
-            hideBarDelay: 2000,
+            hideBarDelay: isMobile ? 1500 : 2000, // Shorter delay on mobile
             loadYouTubeVideoOnOpen: false,
             loadVimeoVideoOnOpen: false,
-            onBeforeNextSlide: false,
-            onBeforePrevSlide: false
+            // Performance optimizations
+            videojs: false, // Disable VideoJS for better performance with native HTML5 video
+            videojsOptions: false
         });
+
+        // Global variables for video management
+        let currentPlayingVideo = null;
+        let currentVolume = 0.7; // Default volume (70%)
+        const VOLUME_STORAGE_KEY = 'gallery_video_volume';
+
+        // Load saved volume from localStorage
+        function loadSavedVolume() {
+            try {
+                const savedVolume = localStorage.getItem(VOLUME_STORAGE_KEY);
+                if (savedVolume !== null) {
+                    currentVolume = parseFloat(savedVolume);
+                    if (isNaN(currentVolume) || currentVolume < 0 || currentVolume > 1) {
+                        currentVolume = 0.7; // Reset to default if invalid
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load saved volume:', error);
+                currentVolume = 0.7;
+            }
+        }
+
+        // Save current volume to localStorage
+        function saveCurrentVolume() {
+            try {
+                localStorage.setItem(VOLUME_STORAGE_KEY, currentVolume.toString());
+            } catch (error) {
+                console.warn('Could not save volume:', error);
+            }
+        }
+
+        // Apply volume to a video element
+        function applyVolumeToVideo(videoElement) {
+            if (videoElement && typeof videoElement.volume !== 'undefined') {
+                videoElement.volume = currentVolume;
+                console.log(`Applied volume ${currentVolume} to video`);
+            }
+        }
+
+        // Function to pause all videos except the specified one
+        function pauseAllVideos(exceptVideo = null) {
+            // Pause any HTML5 videos in the document
+            $('video').not(exceptVideo).each(function() {
+                if (!this.paused) {
+                    // Store current volume before pausing
+                    if (typeof this.volume !== 'undefined') {
+                        this.dataset.lastVolume = this.volume;
+                    }
+                    this.pause();
+                }
+            });
+
+            // If using LightGallery, pause any other videos through its API
+            if (lg && lg.modules && lg.modules.video) {
+                // The LightGallery video module should handle its own video pausing
+                // but we'll ensure any playing videos are stopped
+                const videoElements = document.querySelectorAll('video');
+                videoElements.forEach(video => {
+                    if (video !== exceptVideo && !video.paused) {
+                        // Store current volume before pausing
+                        if (typeof video.volume !== 'undefined') {
+                            video.dataset.lastVolume = video.volume;
+                        }
+                        video.pause();
+                    }
+                });
+            }
+
+            // Update our tracking variable
+            currentPlayingVideo = exceptVideo;
+        }
+
+        // Handle gallery events
+        if (lg) {
+            // When the gallery opens
+            lg.LGel.on('lgAfterOpen', function() {
+                console.log('Gallery opened, checking slideshow state');
+
+                // Add mobile close button for better mobile UX
+                addMobileCloseButton();
+
+                // If slideshow mode is enabled, make sure it's running
+                if (isSlideshow && lg.modules && lg.modules.autoplay) {
+                    console.log('Starting slideshow after gallery opened');
+                    lg.settings.slideShowAutoplay = true;
+                    lg.modules.autoplay.startSlideShow();
+                    $('#slideshowBtn').find('i').removeClass('fa-play').addClass('fa-pause');
+                }
+
+                // For mobile devices or slideshow mode, enter fullscreen automatically
+                if (isSlideshow || isMobile) {
+                    setTimeout(function() {
+                        console.log('Auto entering fullscreen');
+                        if (!document.fullscreenElement &&
+                            !document.mozFullScreenElement &&
+                            !document.webkitFullscreenElement &&
+                            !document.msFullscreenElement) {
+                            $('.lg-fullscreen').trigger('click');
+                        }
+                    }, 300);
+                }
+            });
+
+            // When the gallery closes
+            lg.LGel.on('lgAfterClose', function() {
+                console.log('Gallery closed');
+                if (isSlideshow) {
+                    console.log('Slideshow was active, resetting state');
+                    isSlideshow = false;
+                    $('#slideshowBtn').find('i').removeClass('fa-pause').addClass('fa-play');
+                }
+
+                // Remove mobile close button
+                removeMobileCloseButton();
+
+                // Pause any playing videos when gallery closes
+                pauseAllVideos();
+                
+                // Stop video observer
+                stopVideoObserver();
+            });
+
+            // When autoplay starts/stops
+            lg.LGel.on('lgAutoplayStart', function() {
+                console.log('Autoplay started');
+                isSlideshow = true;
+                $('#slideshowBtn').find('i').removeClass('fa-play').addClass('fa-pause');
+            });
+
+            lg.LGel.on('lgAutoplayStop', function() {
+                console.log('Autoplay stopped');
+                isSlideshow = false;
+                $('#slideshowBtn').find('i').removeClass('fa-pause').addClass('fa-play');
+            });
+
+            // Track which video elements already have listeners
+            const processedVideos = new WeakSet();
+
+            // Function to setup volume persistence for a video element
+            function setupVideoVolumePersistence(videoElement) {
+                if (!videoElement || videoElement.tagName !== 'VIDEO') {
+                    console.log('setupVideoVolumePersistence: Invalid video element', videoElement);
+                    return;
+                }
+
+                // Avoid duplicate setup
+                if (processedVideos.has(videoElement)) {
+                    console.log('setupVideoVolumePersistence: Video already processed, skipping');
+                    return;
+                }
+                processedVideos.add(videoElement);
+
+                console.log('setupVideoVolumePersistence: Setting up volume persistence for video element', videoElement);
+
+                // Apply saved volume immediately if possible
+                if (videoElement.readyState >= 1) { // HAVE_METADATA or higher
+                    videoElement.volume = currentVolume;
+                    console.log(`Applied saved volume ${currentVolume} immediately (readyState: ${videoElement.readyState})`);
+                }
+
+                // Apply saved volume when metadata is loaded (first time video is ready)
+                const applyVolumeHandler = function() {
+                    if (typeof videoElement.volume !== 'undefined') {
+                        videoElement.volume = currentVolume;
+                        console.log(`Applied saved volume ${currentVolume} on loadedmetadata`);
+                    }
+                };
+                videoElement.addEventListener('loadedmetadata', applyVolumeHandler, { once: true });
+
+                // Backup: Apply volume on canplay event
+                const canplayHandler = function() {
+                    if (videoElement.volume !== currentVolume) {
+                        videoElement.volume = currentVolume;
+                        console.log(`Applied saved volume ${currentVolume} on canplay`);
+                    }
+                };
+                videoElement.addEventListener('canplay', canplayHandler, { once: true });
+
+                // Backup: Apply volume on play event (in case loadedmetadata already fired)
+                const playHandler = function() {
+                    if (videoElement.volume !== currentVolume) {
+                        videoElement.volume = currentVolume;
+                        console.log(`Applied saved volume ${currentVolume} on play`);
+                    }
+                };
+                videoElement.addEventListener('play', playHandler, { once: true });
+
+                // Save volume when user changes it - using native event listener
+                const volumeChangeHandler = function(e) {
+                    console.log('volumechange event fired!', 'new volume:', this.volume, 'current saved:', currentVolume);
+                    if (Math.abs(this.volume - currentVolume) > 0.001) { // Use threshold to avoid floating point issues
+                        currentVolume = this.volume;
+                        saveCurrentVolume();
+                        console.log(`Volume changed to ${currentVolume}, saved to localStorage`);
+                    }
+                };
+                // Try both jQuery and native event listeners
+                videoElement.addEventListener('volumechange', volumeChangeHandler);
+                $(videoElement).on('volumechange.lgVolumeControl', volumeChangeHandler);
+
+                // Also listen for muted state changes
+                const mutedChangeHandler = function() {
+                    console.log('Video muted state changed:', this.muted);
+                };
+                videoElement.addEventListener('volumechange', mutedChangeHandler);
+
+                console.log('setupVideoVolumePersistence: All event listeners attached');
+
+                // Store the video element reference
+                currentPlayingVideo = videoElement;
+            }
+
+            // MutationObserver to watch for dynamically added video elements
+            let videoObserver = null;
+
+            function startVideoObserver() {
+                // Stop existing observer if any
+                if (videoObserver) {
+                    videoObserver.disconnect();
+                }
+
+                const galleryContainer = document.querySelector('.lg-container');
+                if (!galleryContainer) {
+                    console.log('Gallery container not found for observer');
+                    return;
+                }
+
+                videoObserver = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        mutation.addedNodes.forEach(function(node) {
+                            // Check if the added node is a video element
+                            if (node.tagName === 'VIDEO') {
+                                console.log('MutationObserver: Video element added to DOM', node);
+                                setupVideoVolumePersistence(node);
+                                // Start playing the video
+                                setTimeout(function() {
+                                    const playPromise = node.play();
+                                    if (playPromise !== undefined) {
+                                        playPromise.then(function() {
+                                            console.log('MutationObserver: Video playback started');
+                                        }).catch(function(error) {
+                                            console.log('MutationObserver: Autoplay prevented:', error.message);
+                                        });
+                                    }
+                                }, 50);
+                            }
+                            // Check if the added node contains video elements
+                            else if (node.querySelectorAll) {
+                                const videos = node.querySelectorAll('video');
+                                videos.forEach(function(video) {
+                                    console.log('MutationObserver: Video element found in added node', video);
+                                    setupVideoVolumePersistence(video);
+                                    // Start playing the video
+                                    setTimeout(function() {
+                                        const playPromise = video.play();
+                                        if (playPromise !== undefined) {
+                                            playPromise.then(function() {
+                                                console.log('MutationObserver: Video playback started');
+                                            }).catch(function(error) {
+                                                console.log('MutationObserver: Autoplay prevented:', error.message);
+                                            });
+                                        }
+                                    }, 50);
+                                });
+                            }
+                        });
+                    });
+                });
+
+                videoObserver.observe(galleryContainer, {
+                    childList: true,
+                    subtree: true
+                });
+
+                console.log('Video MutationObserver started');
+            }
+
+            function stopVideoObserver() {
+                if (videoObserver) {
+                    videoObserver.disconnect();
+                    videoObserver = null;
+                    console.log('Video MutationObserver stopped');
+                }
+            }
+
+            // Function to find and setup all video elements in current slide
+            function findAndSetupVideos(slideIndex) {
+                console.log('findAndSetupVideos: Searching for videos in slide', slideIndex);
+                
+                const $slide = lg.getSlideItem(slideIndex);
+                console.log('findAndSetupVideos: Slide wrapper object', $slide);
+                
+                if (!$slide) {
+                    console.log('findAndSetupVideos: Slide wrapper is null/undefined');
+                    return;
+                }
+                
+                // Get the actual DOM element from the lightgallery wrapper
+                // Lightgallery uses a custom wrapper with a 'firstElement' property
+                let slideElement = null;
+                if ($slide.firstElement) {
+                    slideElement = $slide.firstElement;
+                    console.log('findAndSetupVideos: Got slide from .firstElement property');
+                } else if ($slide.get) {
+                    slideElement = $slide.get(0);
+                    console.log('findAndSetupVideos: Got slide from .get(0) method');
+                } else if ($slide[0]) {
+                    slideElement = $slide[0];
+                    console.log('findAndSetupVideos: Got slide from [0] index');
+                } else if ($slide.selector) {
+                    // Try to query by the selector property
+                    slideElement = document.querySelector($slide.selector);
+                    console.log('findAndSetupVideos: Got slide by querying .selector property');
+                } else {
+                    slideElement = $slide;
+                    console.log('findAndSetupVideos: Using slide wrapper as-is');
+                }
+                
+                console.log('findAndSetupVideos: Raw slide element', slideElement);
+                
+                if (!slideElement) {
+                    console.log('findAndSetupVideos: Could not extract DOM element from slide wrapper');
+                    return;
+                }
+                
+                // Try multiple methods to find video elements
+                let videos = [];
+                
+                // Method 1: Query from the slide element directly for video tags
+                if (slideElement.querySelectorAll) {
+                    videos = Array.from(slideElement.querySelectorAll('video'));
+                    console.log('findAndSetupVideos: Found videos with querySelectorAll("video"):', videos.length);
+                }
+                
+                // Method 2: Look specifically in .lg-video-cont containers
+                if (videos.length === 0 && slideElement.querySelectorAll) {
+                    videos = Array.from(slideElement.querySelectorAll('.lg-video-cont video'));
+                    console.log('findAndSetupVideos: Found videos with querySelectorAll(".lg-video-cont video"):', videos.length);
+                }
+                
+                // Method 3: Look for .lg-video-object class
+                if (videos.length === 0 && slideElement.querySelectorAll) {
+                    videos = Array.from(slideElement.querySelectorAll('.lg-video-object'));
+                    console.log('findAndSetupVideos: Found videos with querySelectorAll(".lg-video-object"):', videos.length);
+                }
+                
+                // Method 4: Check in the entire current slide container as fallback
+                if (videos.length === 0) {
+                    const currentVideos = document.querySelectorAll('.lg-current video');
+                    if (currentVideos.length > 0) {
+                        videos = Array.from(currentVideos);
+                        console.log('findAndSetupVideos: Found videos with document.querySelectorAll(".lg-current video"):', videos.length);
+                    }
+                }
+                
+                // Method 5: Nuclear option - find ALL videos in the gallery and filter
+                if (videos.length === 0) {
+                    const allVideos = document.querySelectorAll('.lg-container video');
+                    if (allVideos.length > 0) {
+                        videos = Array.from(allVideos);
+                        console.log('findAndSetupVideos: Found videos with document.querySelectorAll(".lg-container video"):', videos.length);
+                    }
+                }
+                
+                console.log('findAndSetupVideos: Total videos found:', videos.length);
+                
+                if (videos.length === 0) {
+                    console.log('findAndSetupVideos: NO VIDEOS FOUND! Dumping slide element HTML:');
+                    console.log(slideElement.outerHTML ? slideElement.outerHTML.substring(0, 500) : 'No outerHTML available');
+                }
+                
+                videos.forEach(function(videoElement, index) {
+                    console.log('findAndSetupVideos: Processing video', index, videoElement);
+                    if (videoElement && videoElement.tagName === 'VIDEO') {
+                        setupVideoVolumePersistence(videoElement);
+                        
+                        // Ensure video controls are enabled
+                        videoElement.controls = true;
+                        videoElement.style.pointerEvents = 'auto';
+                        
+                        if (isMobile) {
+                            videoElement.style.maxWidth = '100%';
+                            videoElement.style.maxHeight = '100%';
+                        }
+                        
+                        // Start playing the video
+                        const playPromise = videoElement.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(function() {
+                                console.log('Video playback started successfully');
+                            }).catch(function(error) {
+                                console.log('Video autoplay was prevented:', error.message);
+                                // Autoplay was prevented, but that's OK - user can click play
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Load saved volume on gallery open
+            lg.LGel.on('lgAfterOpen', function() {
+                console.log('Gallery opened, loading saved volume');
+                loadSavedVolume();
+                
+                // Start watching for video elements
+                startVideoObserver();
+                
+                // Check for videos in the initial slide
+                setTimeout(function() {
+                    findAndSetupVideos(lg.index);
+                }, 100);
+            });
+
+            // Handle slide changes to ensure only one video plays and setup volume persistence
+            lg.LGel.on('lgAfterSlide', function(event) {
+                console.log('lgAfterSlide: Slide changed to:', event.detail.index);
+
+                // Pause all videos when slide changes
+                pauseAllVideos();
+
+                // Find and setup videos - try immediately first
+                findAndSetupVideos(event.detail.index);
+                
+                // Also try with a small delay to catch videos that load async
+                setTimeout(function() {
+                    findAndSetupVideos(event.detail.index);
+                }, 100);
+                
+                // And one more time with a longer delay as final backup
+                setTimeout(function() {
+                    findAndSetupVideos(event.detail.index);
+                }, 300);
+            });
+
+            // Handle video elements when slide is fully loaded (backup for delayed video loading)
+            lg.LGel.on('lgSlideItemLoad', function(event) {
+                const index = event.detail.index;
+                console.log('lgSlideItemLoad: Slide loaded', index, 'current index:', lg.index);
+                
+                // Only setup for the current slide
+                if (index === lg.index) {
+                    findAndSetupVideos(index);
+                }
+            });
+
+            // Cleanup video event listeners before slide changes
+            lg.LGel.on('lgBeforeSlide', function(event) {
+                const prevIndex = event.detail.prevIndex;
+                const $prevSlide = lg.getSlideItem(prevIndex);
+                const $prevVideo = $prevSlide.find('video.lg-video-object');
+                
+                if ($prevVideo.length > 0) {
+                    const prevVideoElement = $prevVideo.get(0);
+                    // Remove jQuery event listeners
+                    $(prevVideoElement).off('.lgVolumeControl');
+                    console.log('Cleaned up video event listeners from previous slide');
+                }
+            });
+
+            // Auto-hide controls functionality
+            let controlsHideTimeout;
+            const CONTROLS_HIDE_DELAY = 3000; // 3 seconds
+            
+            function showControls() {
+                const $container = $('.lg-container');
+                if ($container.length) {
+                    $container.addClass('lg-show-controls');
+                    console.log('Controls shown');
+                    
+                    // Clear existing timeout
+                    if (controlsHideTimeout) {
+                        clearTimeout(controlsHideTimeout);
+                    }
+                    
+                    // Set new timeout to hide controls
+                    controlsHideTimeout = setTimeout(() => {
+                        $container.removeClass('lg-show-controls');
+                        console.log('Controls hidden after inactivity');
+                    }, CONTROLS_HIDE_DELAY);
+                }
+            }
+            
+            function resetControlsTimer() {
+                showControls();
+            }
+            
+            // Show controls on various user interactions
+            lg.LGel.on('lgAfterOpen', function() {
+                const $container = $('.lg-container');
+                
+                // Show controls initially
+                showControls();
+                
+                // Add event listeners for user activity
+                $container.on('mousemove.controls touchstart.controls click.controls keydown.controls', function(e) {
+                    // Don't show controls when interacting with video controls
+                    if (!$(e.target).closest('video').length) {
+                        resetControlsTimer();
+                    }
+                });
+                
+                // Show controls when hovering over toolbar or navigation buttons
+                $container.on('mouseenter.controls', '.lg-toolbar, .lg-prev, .lg-next', function() {
+                    showControls();
+                });
+            });
+            
+            // Clean up on close
+            lg.LGel.on('lgAfterClose', function() {
+                if (controlsHideTimeout) {
+                    clearTimeout(controlsHideTimeout);
+                }
+                $('.lg-container').off('.controls');
+            });
+        }
 
     } catch (error) {
         console.error('Error initializing gallery:', error);
@@ -690,25 +1569,87 @@ function sortElements() {
 }
 
 function setListeners() {
+    // Check if cfg_cookie.txt exists and show download button if it does
+    fetch('./check_cookie')
+        .then(response => response.json())
+        .then(data => {
+            if (data.cookie_exists) {
+                document.getElementById('downloadBtn').style.display = 'inline-flex';
+            }
+        })
+        .catch(error => console.error('Error checking cookie:', error));
+
+    // Download button click handler
+    $('#downloadBtn').on('click', function() {
+        $('#downloadModal').show();
+    });
+
+    // Close button handler
+    $('.close').on('click', function() {
+        $('#downloadModal').hide();
+    });
+
+    // Click outside modal to close
+    $(window).on('click', function(event) {
+        if ($(event.target).is('#downloadModal')) {
+            $('#downloadModal').hide();
+        }
+    });
+
+    // Start download handler
+    $('#startDownload').on('click', function() {
+        const url = $('#downloadUrl').val().trim();
+        if (!url) {
+            $('#downloadStatus').html('<p style="color: red;">Please enter a valid URL</p>');
+            return;
+        }
+
+        $('#downloadStatus').html('<p>Starting download...</p>');
+        fetch('./fetch_images', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url: url })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                $('#downloadStatus').html('<p style="color: green;">Download completed successfully!</p>');
+                setTimeout(() => {
+                    $('#downloadModal').hide();
+                    $('#downloadUrl').val('');
+                    $('#downloadStatus').html('');
+                }, 2000);
+            } else {
+                $('#downloadStatus').html(`<p style="color: red;">Error: ${data.error}</p>`);
+            }
+        })
+        .catch(error => {
+            $('#downloadStatus').html(`<p style="color: red;">Error: ${error.message}</p>`);
+        });
+    });
+
     $(document).bind('webkitfullscreenchange mozfullscreenchange fullscreenchange MSFullscreenChange', function() {
-        let tb = $('.lg-toolbar');
-        let to = $('.lg-thumb-outer');
-        let ln = $('.lg-next');
-        let lp = $('.lg-prev');
         let isFullScreen = document.fullScreen ||
             document.mozFullScreen ||
             document.webkitIsFullScreen || (document.msFullscreenElement != null);
         if (isFullScreen) {
-            console.log('fullScreen!');
-            tb.hide();
-            to.hide();
-            ln.hide();
-            lp.hide();
+            console.log('fullScreen mode entered!');
+            // Don't hide controls - let them fade in/out naturally via CSS
+            
+            // Use a delay to ensure UI has updated before checking slideshow state
+            setTimeout(function() {
+                persistSlideshowState();
+            }, 500);
         } else {
-            tb.show();
-            to.show();
-            ln.show();
-            lp.show();
+            console.log('fullScreen mode exited!');
+            // Don't force show controls - let them fade in/out naturally via CSS
+            
+            // Use a delay to ensure UI has updated before checking slideshow state
+            setTimeout(function() {
+                persistSlideshowState();
+            }, 500);
         }
     });
 
@@ -717,20 +1658,14 @@ function setListeners() {
         e.stopPropagation();
     });
 
-    $(document).on('touchstart','.lg-current', function() {
-        // When touch starts on the current slide, show controls
-        showAndFadeControls();
-    });
-
-    $(document).on('touchend','.lg-current', function() {
-        // When touch ends on the current slide, show controls
-        showAndFadeControls();
-    });
-
-    $(document).on('click', 'video, .lg-object.lg-image', function() {
-        // Show controls when clicking on video or image
-        showAndFadeControls();
-    });
+    // Remove ALL old gallery control handlers
+    $(document).off('click.lg-controls');
+    $(document).off('click', '#lg-container-1');
+    $(document).off('click', '.lg-container');
+    $(document).off('touchstart', '.lg-current');
+    $(document).off('touchend', '.lg-current');
+    $(document).off('click', 'video, .lg-object.lg-image');
+    $('.lg-container').off('click.lg-controls');
 
     // Optimize thumbnail click handler for better performance
     $(document).on('click', '.thumbDiv', function(e) {
@@ -956,18 +1891,6 @@ function openGalleryItem(index) {
         lg.openGallery(index);
         console.timeEnd('open-gallery-item-total');
     }
-}
-
-function showControls() {
-    if (!lg || !lg.$container) return;
-    $('.lg-toolbar, .lg-prev, .lg-next').css('opacity', '1');
-    isControlsVisible = true;
-}
-
-function hideControls() {
-    if (!lg || !lg.$container) return;
-    $('.lg-toolbar, .lg-prev, .lg-next').css('opacity', '0');
-    isControlsVisible = false;
 }
 
 function setSort() {

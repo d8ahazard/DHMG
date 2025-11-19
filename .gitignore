@@ -43,3 +43,4 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db 
+cfg_cookie.txt
